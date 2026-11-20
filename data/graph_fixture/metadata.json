@@ -1,0 +1,50 @@
+{
+  "counts": {
+    "duplicates_skipped": 0,
+    "entities": 18,
+    "event_trace_relationships": 51,
+    "events": 17,
+    "evidence_records": 17,
+    "invalid_records": 0,
+    "original_entity_relationships": 17,
+    "records_accepted": 69,
+    "records_read": 69,
+    "records_rejected": 0,
+    "relationships": 68,
+    "timestamps_unresolved": 0
+  },
+  "dataset_id": "trustrail-member2-synthetic-v1",
+  "finished_at": "2026-11-20T19:16:39Z",
+  "input_files": {
+    "entities": {
+      "name": "entities.csv",
+      "size_bytes": 770
+    },
+    "events": {
+      "name": "events.csv",
+      "size_bytes": 2045
+    },
+    "evidence": {
+      "name": "evidence.csv",
+      "size_bytes": 2034
+    },
+    "relationships": {
+      "name": "relationships.csv",
+      "size_bytes": 1153
+    }
+  },
+  "outputs": [
+    "entities.jsonl",
+    "relationships.jsonl",
+    "events.jsonl",
+    "evidence.jsonl",
+    "rejected.jsonl",
+    "metadata.json"
+  ],
+  "source_systems": [
+    "TRUSTRAIL_SYNTHETIC_SIMULATOR"
+  ],
+  "started_at": "2026-11-20T19:16:39Z",
+  "transform_version": "0.2.0",
+  "warning_counts": {}
+}
