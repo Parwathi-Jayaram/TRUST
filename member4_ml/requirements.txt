@@ -1,0 +1,15 @@
+# TRUSTRAIL AI — Member 4 ML Layer Dependencies
+# Reproducible environment for the AI/ML detection layer.
+
+# Core data and ML stack (verified installed)
+scikit-learn==1.8.0
+pandas==2.3.3
+numpy==2.4.1
+joblib==1.5.3
+
+# Optional extensions (install only when needed)
+# matplotlib==3.9.0        # evaluation charts (Phase 5/6)
+# shap==0.46.0             # optional SHAP explainability (Phase 6)
+# neo4j==5.23.0            # Neo4j Python driver (Phase 8 graph integration)
+# fastapi==0.111.0         # backend API (Phase 10, if team uses Python API)
+# uvicorn==0.30.0          # ASGI server for FastAPI
