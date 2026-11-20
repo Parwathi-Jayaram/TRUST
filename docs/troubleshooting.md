@@ -10,15 +10,15 @@ The reader limits a single JSON document to 16 MiB. Convert a large array/object
 
 ## Rows appear in `rejected.jsonl`
 
-Check `reason`, `source_file`, and `record_locator`. Typical causes are malformed JSON, missing/unparseable timestamps, or an unrecognized row shape. The raw row is not copied into the rejection file.
+Check `reason`, `source_file`, and `record_locator`. Typical causes are malformed JSON, invalid relationship endpoints, or an unrecognized row shape. The raw row is not copied into the rejection file. Missing or invalid timestamps are emitted as events with a null normalized time and separately flagged for validation.
 
-## Timestamp is present but `event_time_utc` is null
+## Timestamp is missing or `event_time` is null
 
-Inspect `event_time_original` and `timestamp_semantics`. A naive local timestamp or small numeric source time is preserved but not guessed as UTC. Supply a documented source timezone/origin mapping before adding conversion behavior.
+Inspect `event_time_original` and `timestamp_semantics`. A naive local timestamp or small numeric source time is preserved but not guessed as UTC. The record is exported with a null `event_time` and a recoverable validation entry. Supply a documented source timezone/origin mapping before adding conversion behavior.
 
 ## No relationship was exported
 
-Only explicit network flow, successful supported authentication, and process-start shapes currently create relationships. Failed authentication and logoff records remain events without `AUTHENTICATED_TO`. Missing endpoints are warnings, not guessed entities.
+Check that the endpoint types match the import contract and that explicit relationships include source and target IDs/types. Failed authentication and logoff records remain events without `AUTHENTICATED_TO`. Missing endpoints are warnings, not guessed entities.
 
 ## Import fails with `No module named trustrail_pipeline`
 

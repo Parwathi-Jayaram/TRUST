@@ -22,7 +22,12 @@ def _parser() -> argparse.ArgumentParser:
     ingest.add_argument("--version", default="unknown")
     ingest.add_argument("--source-url")
     ingest.add_argument("--license")
-    ingest.add_argument("--evidence-status", choices=("observed", "synthetic", "enriched", "derived"), default="observed")
+    ingest.add_argument(
+        "--evidence-status",
+        choices=("observed", "derived", "unconfirmed", "synthetic"),
+        default="observed",
+    )
+    ingest.add_argument("--synthetic", action="store_true")
     ingest.add_argument("--format", choices=("csv", "json", "jsonl"))
     ingest.add_argument("--max-records", type=int)
 
@@ -42,7 +47,8 @@ def main() -> None:
             source_system="trustrail_synthetic_generator",
             source_version="1",
             license_name="project-generated",
-            evidence_status="synthetic",
+            evidence_status="observed",
+            is_synthetic=True,
         )
     else:
         report = run_pipeline(
@@ -54,6 +60,7 @@ def main() -> None:
             source_url=args.source_url,
             license_name=args.license,
             evidence_status=args.evidence_status,
+            is_synthetic=args.synthetic,
             input_format=args.format,
             max_records=args.max_records,
         )

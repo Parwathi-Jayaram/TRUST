@@ -1,8 +1,8 @@
 # TRUSTRAIL AI — Member 3 Data Pipeline
 
-This project contains the defensive telemetry ingestion and normalization work for Member 3. It reads local CSV, JSON, or JSONL files, preserves source provenance, validates records, and emits candidate graph-ready events, entities, relationships, and evidence. It does not download datasets, access networks, or execute source files.
+This project contains the defensive telemetry ingestion and normalization work for Member 3. It reads local CSV, JSON, or JSONL files, preserves source provenance and explicit IDs, validates records, and emits graph-ready entities, relationships, events, and evidence. It does not download datasets, access networks, or execute source files.
 
-The Member 2 graph fields are provisional: their brief explicitly describes the schema as a starting proposal. Confirm the final contract against representative source records before production ingestion.
+The exporter follows Member 2's initial graph/import contract. Confirm the provisional `SUPPORTED_BY` and `OBSERVED_ON` traceability edge names before production ingestion.
 
 ## Requirements
 
@@ -36,6 +36,8 @@ python -m trustrail_pipeline.cli ingest `
   --evidence-status observed
 ```
 
+Add `--synthetic` for synthetic input. Evidence status remains `observed`, `derived`, or `unconfirmed` and is kept separate from synthetic provenance.
+
 Supported input formats are CSV, JSON Lines (`.jsonl` / `.ndjson`), and small JSON documents. JSON documents are limited to 16 MiB to avoid unbounded in-memory parsing. Use JSONL or CSV for larger sources. `--max-records` can limit a local test run.
 
 Recognized input shapes:
@@ -48,13 +50,13 @@ Invalid rows are recorded in `rejected.jsonl`; errors reading the input file are
 ## Outputs
 
 - `events.jsonl` — normalized events and candidate Member 2 event fields.
-- `entities.jsonl` — deduplicated entity records.
-- `relationships.jsonl` — evidence-backed candidate graph relationships.
+- `entities.jsonl` — deduplicated entity records with `id`, `type`, and Boolean `synthetic`.
+- `relationships.jsonl` — domain relationships plus event-to-evidence and event-to-entity traceability links.
 - `evidence.jsonl` — source record, observed/ingested time, and provenance.
-- `rejected.jsonl` — record locator and explicit validation/parsing error, without copying raw row values.
-- `report.json` — measured run counts, warnings, runtime, input size, and transform version.
+- `rejected.jsonl` — record locator and explicit validation/parsing error; invalid timestamps are preserved without copying the entire raw row.
+- `metadata.json` — measured run counts, warnings, runtime, input size, and transform version.
 
-Output records are deterministic for the same dataset ID, source record IDs, and input. `ingestion_time` and run metrics reflect the actual run. See [docs/ingestion_contract.md](docs/ingestion_contract.md) and [docs/troubleshooting.md](docs/troubleshooting.md).
+Output records are deterministic for the same dataset ID, source record IDs, and input, except for run-time metadata. The bundled demo is illustrative synthetic data, not the separate 18-entity/17-relationship fixture Member 2 described. See [docs/ingestion_contract.md](docs/ingestion_contract.md) and [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Validate
 

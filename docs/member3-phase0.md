@@ -1,8 +1,8 @@
 # TRUSTRAIL AI Member 3 — Phase 0
 
-**Status:** Proposal for review; no dataset has been downloaded.
+**Status:** Phase 0 reviewed; no dataset has been downloaded. Member 2's initial graph contract was received on 2026-11-20.
 
-**Scope:** Data requirements and source feasibility only. Pipeline implementation is gated on review of this document and agreement with Member 2.
+**Scope:** This document records source feasibility and data requirements. The current JSONL exporter contract is maintained in [ingestion_contract.md](ingestion_contract.md).
 
 ## 1. Member 3 responsibilities
 
@@ -56,7 +56,7 @@ Use ATT&CK and CISA KEV as narrowly scoped, time-stamped contextual enrichment. 
 - Controlled benign and suspicious scenarios used to demonstrate graph paths.
 - Ground-truth labels for generated records, stored separately from observed public-data labels.
 
-Every synthetic record and relationship must carry `evidence_status: "synthetic"` and a scenario/source identifier. Do not merge synthetic and sourced records without preserving each record's origin. Do not invent public-data labels, indicators, causal links, or incident outcomes.
+Every synthetic record and relationship must carry a Boolean synthetic-origin field and a scenario/source identifier. Keep that flag separate from `evidence_status`, which records whether an assertion is observed, derived, or unconfirmed. Do not merge synthetic and sourced records without preserving each record's origin. Do not invent public-data labels, indicators, causal links, or incident outcomes.
 
 ## 4. Preliminary data requirements and pipeline
 
@@ -79,31 +79,29 @@ Every synthetic record and relationship must carry `evidence_status: "synthetic"
 
 Keep raw data unchanged where permitted. Track source name/version, URL, file, retrieval time, license/citation, checksum where useful, parser and transform versions, and rejection reasons. Use chunked processing for large files. Do not run network scans, contact indicators, or execute downloaded malware.
 
-### Proposed normalized event envelope
+### Initial normalized event example
 
-This is a candidate contract, not the final Neo4j schema:
+This illustrative shape follows Member 2's initial implementation contract; see [ingestion_contract.md](ingestion_contract.md) for the exporter fields:
 
 ```json
 {
-  "event_id": "event:<stable-id>",
+  "event_id": "EVT-001",
   "event_type": "authentication",
   "event_time": "2026-01-15T10:20:30Z",
-  "event_time_utc": "2026-01-15T10:20:30Z",
-  "event_time_original": "1768472430",
-  "timestamp_semantics": "unix_seconds",
-  "ingestion_time": "<generated-at-ingestion>",
+  "event_time_original": "2026-01-15T10:20:30Z",
+  "timestamp_semantics": "iso8601",
+  "ingested_at": "<generated-at-ingestion>",
   "source_system": "<source-system>",
   "source_record_id": "<source-record-id>",
-  "source_entity_id": "entity:<stable-id>",
-  "target_entity_id": "entity:<stable-id>",
-  "relationship": "AUTHENTICATED_TO",
-  "evidence_id": "evidence:<stable-id>",
+  "severity": null,
+  "description": "Synthetic successful authentication",
+  "evidence_id": "EVD-001",
   "evidence_status": "observed",
-  "attributes": {"Status": "0x0"}
+  "is_synthetic": true
 }
 ```
 
-The example is illustrative only; its IDs and values are not an extracted real record. It aligns the proposal with Member 2's event fields while retaining source-time semantics. Preserve original timestamps and source fields. Do not label an unknown timezone as UTC; keep its original value and require an explicit conversion rule before UTC-based correlation. Use deterministic IDs based on source identity and record identity, subject to Member 2's ID convention.
+The example is illustrative only; its IDs and values are not an extracted real record. Preserve original timestamps and source fields. Do not label an unknown timezone as UTC; keep its raw value, leave normalized `event_time` unset, and report it for validation.
 
 ### Initial entity and relationship plan
 
@@ -113,30 +111,28 @@ The example is illustrative only; its IDs and values are not an extracted real r
 - Extract process relationships only from explicit process/parent-process fields.
 - Add `DEPENDS_ON` only from an explicit inventory/dependency record or labeled synthetic fixture.
 - Add asset-to-CVE context only from an explicit vulnerability/inventory match; do not infer exploitation.
-- Preserve ambiguous identity associations as unconfirmed possibilities. Do not merge records solely because of a shared IP, hostname, username, or time window. Every relationship must reference evidence and indicate whether it is observed, derived, enriched, or synthetic.
+- Preserve ambiguous identity associations as unconfirmed possibilities. Do not merge records solely because of a shared IP, hostname, username, or time window. Every relationship must reference evidence and retain its observed, derived, or unconfirmed status separately from its synthetic-origin flag.
 
 ### Member 2 coordination contract
 
-Member 2's supplied brief calls its schema a starting proposal and says to validate it against Member 3's actual input; it is not a finalized contract. Candidate labels include `User`, `Identity`, `Account`, `Role`, `Group`, `Host`, `Endpoint`, `Server`, `CloudResource`, `NetworkSegment`, `Application`, `Service`, `IPAddress`, `Domain`, `File`, `ThreatIndicator`, `Certificate`, `Process`, `Vulnerability`, `AttackTechnique`, `SecurityEvent`, `Alert`, `Incident`, `Evidence`, and `Investigation`. Candidate relationship types include `USES`, `AUTHENTICATED_TO`, `MEMBER_OF`, `COMMUNICATES_WITH`, `RUNS`, `ACCESSED`, `HAS_VULNERABILITY`, `DEPENDS_ON`, `INVOLVES`, `CONTAINS`, `ASSOCIATED_WITH`, `INDICATES`, `OBSERVED_ON`, `GENERATED`, `SUPPORTED_BY`, `PART_OF`, and `TARGETS`.
+Member 2 supplied an initial implementation contract on 2026-11-20. It calls for `Entity` plus type-specific labels, `SecurityEvent` and `Evidence` nodes, exact supplied IDs, JSONL exports, and `MERGE`-based import keyed by entity/event/evidence/relationship IDs. The domain relationships are `AUTHENTICATED_TO`, `COMMUNICATES_WITH`, `RUNS`, `DEPENDS_ON`, `HAS_VULNERABILITY`, and `INVOLVES`, with source-to-target direction preserved.
 
-The proposed common properties are `id`, `name`, `entity_type`, `created_at`, `updated_at`, `source`, `environment`, `criticality`, and `status`; proposed event properties include `event_id`, `event_type`, `event_time`, `ingestion_time`, `severity`, `source_system`, and `description`. The brief's example relationship record includes `event_time`, `source_system`, `source_entity_id`, `target_entity_id`, `relationship`, and `evidence_id`. It also asks that important relationships be traceable to evidence fields such as `evidence_id`, `source_record_id`, `source_system`, `observed_at`, `ingested_at`, and `evidence_type`.
+Event-to-evidence and event-to-entity links are required, but their exact relationship names were not specified in the response. The exporter currently uses the earlier candidate types `SUPPORTED_BY` and `OBSERVED_ON` in those directions; confirm those names with Member 2 before treating them as final.
 
-Use these as candidate field names for the provisional Member 3 output, not as permission to finalize a graph model. Before graph ingestion, Member 2 must confirm node labels, relationship directions, stable-key namespaces, required properties, event/time semantics, evidence and provenance properties, null handling, duplicate/idempotency behavior, export format, batch/error handling, and expected counts. Member 3 will provide representative records and field definitions. Do not assume NIX's existing transaction-risk module is the graph schema for this cybersecurity task.
+The initial contract separates the Boolean synthetic-origin field from evidence status (`observed`, `derived`, or `unconfirmed`), keeps `event_time`, `observed_at`, and `ingested_at` distinct, and requires invalid timestamps to remain unset while retaining their raw value for validation. Neo4j batch size, parameterized Cypher, transaction rollback, and importer error handling remain Member 2's importer responsibilities. Do not assume NIX's transaction-risk module is the graph schema for this cybersecurity task.
 
-## 5. Conditional 48-hour schedule
+## 5. Remaining validation schedule
 
-The schedule starts only after this Phase 0 proposal is reviewed. Phase 1 work must not start before source/requirements approval and Member 2 schema coordination.
+The synthetic exporter and its tests are implemented. Real-data validation has not begun because no source sample has been approved or downloaded.
 
-| Elapsed time | Proposed work after approval |
+| Elapsed time after approvals and sample access | Remaining work |
 |---|---|
-| 0–4 hours | Confirm source, licensing/attribution, sample size limit, data use, and graph contract owners |
-| 4–12 hours | Inspect approved sample, document actual fields/records, define validated source mappings |
-| 12–24 hours | Implement bounded ingestion, normalization, provenance, and invalid-record reporting |
-| 24–34 hours | Add deterministic entity references, evidence-backed relationship extraction, and export validation |
-| 34–42 hours | Add labeled synthetic scenarios, targeted tests, and measured data-quality output |
-| 42–48 hours | Verify Member 2 ingestion, document limitations/run steps, and prepare handoff |
+| 0–2 hours | Confirm the selected source, license/attribution, sample-size limit, and Member 2's trace-link names |
+| 2–4 hours | Inspect the approved sample and document actual fields and timestamp semantics |
+| 4–8 hours | Adjust source mappings as needed; run focused tests and measure accepted, invalid, and rejected records |
+| 8–12 hours | Share sample JSONL records and verify Member 2's Neo4j test import and evidence traceability |
 
-These are estimates, not completed work or measured results.
+These are estimates, not completed work or guaranteed elapsed time. Access, schema changes, and team response times may extend the schedule.
 
 ## 6. Risk register
 
@@ -151,14 +147,13 @@ These are estimates, not completed work or measured results.
 | Stale or unverified enrichment | Incorrect risk context | Store source and retrieval time; check expiry/freshness; treat as context only |
 | Sensitive values in example telemetry | Privacy exposure | Use public/de-identified or authorized sample data; avoid credentials and unnecessary identifiers |
 
-## 7. Phase 0 acceptance criteria
+## 7. Remaining Phase 0/data gates
 
 - Member 1 reviews the source recommendation, dataset limitations, licensing/attribution, and download-size constraints.
-- Member 2 confirms the proposed fields/evidence semantics and supplies or approves the Neo4j integration contract.
-- The team agrees on the primary sample and a maximum download size before any dataset download.
-- Required versus optional telemetry and the normalized event envelope are reviewed.
-- Synthetic data policy, source provenance, and non-causal relationship rules are accepted.
-- No Phase 1 pipeline implementation or bulk download begins until this review is complete.
+- Member 2 has supplied the initial graph/import contract; confirm the event-to-evidence and event-to-entity relationship names.
+- The team agrees on the primary sample and maximum download size before any dataset download.
+- Required versus optional telemetry, timestamp semantics, synthetic-data policy, and provenance rules are accepted.
+- No real dataset has been downloaded or validated; the bundled demo is illustrative synthetic data only.
 
 ## Official source links
 
