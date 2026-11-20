@@ -2,7 +2,7 @@
 
 This project contains the defensive telemetry ingestion and normalization work for Member 3. It reads local CSV, JSON, or JSONL files, preserves source provenance and explicit IDs, validates records, and emits graph-ready entities, relationships, events, and evidence. It does not download datasets, access networks, or execute source files.
 
-The exporter follows Member 2's initial graph/import contract. Confirm the provisional `SUPPORTED_BY` and `OBSERVED_ON` traceability edge names before production ingestion.
+The exporter follows Member 2's initial graph/import contract, including the confirmed `SUPPORTED_BY` and `OBSERVED_ON` traceability edge directions. Neo4j import testing remains with Member 2.
 
 ## Requirements
 
@@ -38,6 +38,22 @@ python -m trustrail_pipeline.cli ingest `
 
 Add `--synthetic` for synthetic input. Evidence status remains `observed`, `derived`, or `unconfirmed` and is kept separate from synthetic provenance.
 
+## Export a split graph dataset
+
+For source data already split into entity, relationship, event, and evidence CSVs:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m trustrail_pipeline.cli ingest-graph `
+  --entities C:\data\entities.csv `
+  --relationships C:\data\relationships.csv `
+  --events C:\data\events.csv `
+  --evidence C:\data\evidence.csv `
+  --output-dir data\processed\graph-fixture
+```
+
+The exporter preserves supplied IDs and property values, adds event trace links to `relationships.jsonl`, and sets `relationship_category` to `original_entity` or `event_trace`. Trace `OBSERVED_ON` records carry `endpoint_role: "source"` or `"target"`. Metadata reports both relationship counts separately.
+
 Supported input formats are CSV, JSON Lines (`.jsonl` / `.ndjson`), and small JSON documents. JSON documents are limited to 16 MiB to avoid unbounded in-memory parsing. Use JSONL or CSV for larger sources. `--max-records` can limit a local test run.
 
 Recognized input shapes:
@@ -51,7 +67,7 @@ Invalid rows are recorded in `rejected.jsonl`; errors reading the input file are
 
 - `events.jsonl` — normalized events and candidate Member 2 event fields.
 - `entities.jsonl` — deduplicated entity records with `id`, `type`, and Boolean `synthetic`.
-- `relationships.jsonl` — domain relationships plus event-to-evidence and event-to-entity traceability links.
+- `relationships.jsonl` — source relationships plus event-to-evidence and event-to-entity trace links, categorized separately.
 - `evidence.jsonl` — source record, observed/ingested time, and provenance.
 - `rejected.jsonl` — record locator and explicit validation/parsing error; invalid timestamps are preserved without copying the entire raw row.
 - `metadata.json` — measured run counts, warnings, runtime, input size, and transform version.

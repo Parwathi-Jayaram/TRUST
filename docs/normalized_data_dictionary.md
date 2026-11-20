@@ -34,6 +34,6 @@ The pipeline emits `entities.jsonl`, `relationships.jsonl`, `events.jsonl`, `evi
 
 Evidence records retain event/source IDs, `observed_at` and its raw value, `ingested_at`, description, source provenance, evidence status, and synthetic flag.
 
-Relationship records use `relationship_id` as their stable import key and retain `source_id`, `target_id`, `relationship_type`, `event_id`, `evidence_status`, and `is_synthetic`. Explicit source-to-target direction is preserved. Event-to-evidence and event-to-entity trace edges are emitted as `SUPPORTED_BY` and `OBSERVED_ON`, respectively; confirm those names with Member 2 before treating them as final.
+Relationship records use `relationship_id` as their stable import key and retain `source_id`, `target_id`, `relationship_type`, `event_id`, `evidence_status`, and `is_synthetic`. `relationship_category` distinguishes `original_entity` edges from `event_trace` edges. Explicit source-to-target direction is preserved. Event-to-evidence and event-to-entity trace edges use the confirmed `SUPPORTED_BY` and `OBSERVED_ON` types; `endpoint_role` identifies source or target for `OBSERVED_ON`.
 
 Invalid timestamps produce an event with `event_time: null`, preserve the raw value, and add a recoverable validation entry to `rejected.jsonl`. No timestamp is fabricated.

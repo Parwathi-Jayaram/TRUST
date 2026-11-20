@@ -1,6 +1,6 @@
 # TRUSTRAIL AI Member 3 — Phase 0
 
-**Status:** Phase 0 reviewed; no dataset has been downloaded. Member 2's initial graph contract was received on 2026-11-20.
+**Status:** Phase 0 reviewed; no real-source dataset has been downloaded. Member 2's initial graph contract and authorized synthetic fixture were received on 2026-11-20.
 
 **Scope:** This document records source feasibility and data requirements. The current JSONL exporter contract is maintained in [ingestion_contract.md](ingestion_contract.md).
 
@@ -117,22 +117,13 @@ The example is illustrative only; its IDs and values are not an extracted real r
 
 Member 2 supplied an initial implementation contract on 2026-11-20. It calls for `Entity` plus type-specific labels, `SecurityEvent` and `Evidence` nodes, exact supplied IDs, JSONL exports, and `MERGE`-based import keyed by entity/event/evidence/relationship IDs. The domain relationships are `AUTHENTICATED_TO`, `COMMUNICATES_WITH`, `RUNS`, `DEPENDS_ON`, `HAS_VULNERABILITY`, and `INVOLVES`, with source-to-target direction preserved.
 
-Event-to-evidence and event-to-entity links are required, but their exact relationship names were not specified in the response. The exporter currently uses the earlier candidate types `SUPPORTED_BY` and `OBSERVED_ON` in those directions; confirm those names with Member 2 before treating them as final.
+Member 2 confirmed the event-to-evidence and event-to-entity directions as `SUPPORTED_BY` and `OBSERVED_ON`. `OBSERVED_ON` retains `endpoint_role` as `source` or `target`. The exporter marks these generated links with `relationship_category: "event_trace"` and preserves the original CSV edges with `relationship_category: "original_entity"`.
 
 The initial contract separates the Boolean synthetic-origin field from evidence status (`observed`, `derived`, or `unconfirmed`), keeps `event_time`, `observed_at`, and `ingested_at` distinct, and requires invalid timestamps to remain unset while retaining their raw value for validation. Neo4j batch size, parameterized Cypher, transaction rollback, and importer error handling remain Member 2's importer responsibilities. Do not assume NIX's transaction-risk module is the graph schema for this cybersecurity task.
 
-## 5. Remaining validation schedule
+## 5. Remaining validation work
 
-The synthetic exporter and its tests are implemented. Real-data validation has not begun because no source sample has been approved or downloaded.
-
-| Elapsed time after approvals and sample access | Remaining work |
-|---|---|
-| 0–2 hours | Confirm the selected source, license/attribution, sample-size limit, and Member 2's trace-link names |
-| 2–4 hours | Inspect the approved sample and document actual fields and timestamp semantics |
-| 4–8 hours | Adjust source mappings as needed; run focused tests and measure accepted, invalid, and rejected records |
-| 8–12 hours | Share sample JSONL records and verify Member 2's Neo4j test import and evidence traceability |
-
-These are estimates, not completed work or guaranteed elapsed time. Access, schema changes, and team response times may extend the schedule.
+The authorized synthetic fixture has been exported locally. Its 18 entities, 17 original relationships, 17 events, and 17 evidence records passed export and reference checks. Event trace links are separated by category and preserve source/target endpoint roles. Member 2's Neo4j test import, repeated-import test, and graph-level traceability checks remain pending. No real-source dataset has been downloaded or validated.
 
 ## 6. Risk register
 
@@ -150,10 +141,10 @@ These are estimates, not completed work or guaranteed elapsed time. Access, sche
 ## 7. Remaining Phase 0/data gates
 
 - Member 1 reviews the source recommendation, dataset limitations, licensing/attribution, and download-size constraints.
-- Member 2 has supplied the initial graph/import contract; confirm the event-to-evidence and event-to-entity relationship names.
-- The team agrees on the primary sample and maximum download size before any dataset download.
+- Member 2 supplied the initial graph/import contract and confirmed `SUPPORTED_BY` / `OBSERVED_ON` trace links; Neo4j import validation remains pending.
+- The authorized synthetic fixture is used only for contract/integration testing. The team must agree on any real-data source and maximum download size before downloading it.
 - Required versus optional telemetry, timestamp semantics, synthetic-data policy, and provenance rules are accepted.
-- No real dataset has been downloaded or validated; the bundled demo is illustrative synthetic data only.
+- No real dataset has been downloaded or validated; synthetic fixture results are not evidence of real-world detection performance.
 
 ## Official source links
 

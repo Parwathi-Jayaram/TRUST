@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from trustrail_pipeline.normalization import normalize_record, normalize_timestamp, SourceInfo
+from trustrail_pipeline.graph_csv import run_graph_csv_export
 from trustrail_pipeline.pipeline import run_pipeline
 from trustrail_pipeline.synthetic import write_demo_input
 
@@ -337,6 +338,142 @@ class PipelineTests(unittest.TestCase):
                     dataset_id="test",
                     source_system="test",
                 )
+
+
+class GraphCsvExportTests(unittest.TestCase):
+    def test_split_graph_csvs_preserve_ids_and_mark_trace_edges(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "entities.csv").write_text(
+                "id,type,name,criticality,synthetic\n"
+                "USR-001,User,alex.morgan,medium,True\n"
+                "HOST-001,Host,WS-FIN-01,high,True\n",
+                encoding="utf-8",
+            )
+            (root / "relationships.csv").write_text(
+                "source_id,relationship_type,target_id,relationship_id,evidence_status,event_id,is_synthetic\n"
+                "USR-001,AUTHENTICATED_TO,HOST-001,REL-001,unconfirmed,EVT-001,True\n",
+                encoding="utf-8",
+            )
+            (root / "events.csv").write_text(
+                "event_id,event_type,source_entity_id,target_entity_id,event_time,severity,description,evidence_id,is_synthetic\n"
+                "EVT-001,authentication,USR-001,HOST-001,2026-11-14T08:10:00Z,medium,successful_login,EVD-001,True\n",
+                encoding="utf-8",
+            )
+            (root / "evidence.csv").write_text(
+                "evidence_id,event_id,source_system,source_record_id,observed_at,description,is_synthetic\n"
+                "EVD-001,EVT-001,SIMULATOR,SRC-001,2026-11-14T08:10:00Z,successful_login,True\n",
+                encoding="utf-8",
+            )
+
+            metadata = run_graph_csv_export(
+                entities_path=root / "entities.csv",
+                relationships_path=root / "relationships.csv",
+                events_path=root / "events.csv",
+                evidence_path=root / "evidence.csv",
+                output_dir=root / "out",
+            )
+            entities = [
+                json.loads(line)
+                for line in (root / "out" / "entities.jsonl").read_text().splitlines()
+            ]
+            relationships = [
+                json.loads(line)
+                for line in (root / "out" / "relationships.jsonl").read_text().splitlines()
+            ]
+            trace = [item for item in relationships if item["relationship_category"] == "event_trace"]
+
+            self.assertEqual(entities[0], {
+                "id": "USR-001",
+                "type": "User",
+                "name": "alex.morgan",
+                "criticality": "medium",
+                "synthetic": True,
+            })
+            self.assertEqual(metadata["counts"]["entities"], 2)
+            self.assertEqual(metadata["counts"]["original_entity_relationships"], 1)
+            self.assertEqual(metadata["counts"]["event_trace_relationships"], 3)
+            self.assertEqual(metadata["counts"]["relationships"], 4)
+            original = next(item for item in relationships if item["relationship_id"] == "REL-001")
+            self.assertEqual(original["relationship_category"], "original_entity")
+            self.assertEqual(original["evidence_status"], "unconfirmed")
+            self.assertEqual(
+                {
+                    (item["relationship_type"], item.get("endpoint_role"), item["source_id"], item["target_id"])
+                    for item in trace
+                },
+                {
+                    ("SUPPORTED_BY", None, "EVT-001", "EVD-001"),
+                    ("OBSERVED_ON", "source", "EVT-001", "USR-001"),
+                    ("OBSERVED_ON", "target", "EVT-001", "HOST-001"),
+                },
+            )
+            self.assertTrue(all(item["evidence_status"] == "unconfirmed" for item in trace))
+            first_relationship_ids = {item["relationship_id"] for item in relationships}
+
+            run_graph_csv_export(
+                entities_path=root / "entities.csv",
+                relationships_path=root / "relationships.csv",
+                events_path=root / "events.csv",
+                evidence_path=root / "evidence.csv",
+                output_dir=root / "out",
+            )
+            repeated_relationships = [
+                json.loads(line)
+                for line in (root / "out" / "relationships.jsonl").read_text().splitlines()
+            ]
+            self.assertEqual(
+                first_relationship_ids,
+                {item["relationship_id"] for item in repeated_relationships},
+            )
+
+    def test_split_graph_invalid_timestamps_are_unset_and_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "entities.csv").write_text(
+                "id,type,synthetic\nHOST-001,Host,True\nSRV-001,Server,True\n",
+                encoding="utf-8",
+            )
+            (root / "relationships.csv").write_text(
+                "source_id,relationship_type,target_id,relationship_id,evidence_status,event_id,is_synthetic\n"
+                "HOST-001,COMMUNICATES_WITH,SRV-001,REL-001,observed,EVT-001,True\n",
+                encoding="utf-8",
+            )
+            (root / "events.csv").write_text(
+                "event_id,event_type,source_entity_id,target_entity_id,event_time,evidence_id,is_synthetic\n"
+                "EVT-001,network_connection,HOST-001,SRV-001,not-a-time,EVD-001,True\n",
+                encoding="utf-8",
+            )
+            (root / "evidence.csv").write_text(
+                "evidence_id,event_id,source_system,source_record_id,observed_at,is_synthetic\n"
+                "EVD-001,EVT-001,SIMULATOR,SRC-001,also-not-a-time,True\n",
+                encoding="utf-8",
+            )
+
+            metadata = run_graph_csv_export(
+                entities_path=root / "entities.csv",
+                relationships_path=root / "relationships.csv",
+                events_path=root / "events.csv",
+                evidence_path=root / "evidence.csv",
+                output_dir=root / "out",
+            )
+            event = json.loads((root / "out" / "events.jsonl").read_text().strip())
+            evidence = json.loads((root / "out" / "evidence.jsonl").read_text().strip())
+            rejected = [
+                json.loads(line)
+                for line in (root / "out" / "rejected.jsonl").read_text().splitlines()
+            ]
+
+            self.assertIsNone(event["event_time"])
+            self.assertEqual(event["event_time_original"], "not-a-time")
+            self.assertIsNone(evidence["observed_at"])
+            self.assertEqual(evidence["observed_at_original"], "also-not-a-time")
+            self.assertEqual(metadata["counts"]["invalid_records"], 2)
+            self.assertEqual(metadata["counts"]["timestamps_unresolved"], 2)
+            self.assertEqual(
+                {item["raw_timestamp"] for item in rejected},
+                {"not-a-time", "also-not-a-time"},
+            )
 
 
 if __name__ == "__main__":

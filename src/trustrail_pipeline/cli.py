@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .graph_csv import run_graph_csv_export
 from .pipeline import run_pipeline
 from .synthetic import write_demo_input
 
@@ -31,6 +32,17 @@ def _parser() -> argparse.ArgumentParser:
     ingest.add_argument("--format", choices=("csv", "json", "jsonl"))
     ingest.add_argument("--max-records", type=int)
 
+    graph = commands.add_parser(
+        "ingest-graph",
+        help="export a graph fixture supplied as separate CSV files",
+    )
+    graph.add_argument("--entities", required=True, type=Path)
+    graph.add_argument("--relationships", required=True, type=Path)
+    graph.add_argument("--events", required=True, type=Path)
+    graph.add_argument("--evidence", required=True, type=Path)
+    graph.add_argument("--output-dir", required=True, type=Path)
+    graph.add_argument("--dataset-id", default="trustrail-member2-synthetic-v1")
+
     demo = commands.add_parser("demo", help="generate and process a deterministic synthetic example")
     demo.add_argument("--output-dir", required=True, type=Path)
     return parser
@@ -49,6 +61,15 @@ def main() -> None:
             license_name="project-generated",
             evidence_status="observed",
             is_synthetic=True,
+        )
+    elif args.command == "ingest-graph":
+        report = run_graph_csv_export(
+            entities_path=args.entities,
+            relationships_path=args.relationships,
+            events_path=args.events,
+            evidence_path=args.evidence,
+            output_dir=args.output_dir,
+            dataset_id=args.dataset_id,
         )
     else:
         report = run_pipeline(
