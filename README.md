@@ -101,8 +101,10 @@ python -m uvicorn backend.app.main:app --reload
 The API is documented at `http://127.0.0.1:8000/docs`; readiness is available
 at `http://127.0.0.1:8000/api/health`. Neo4j-backed endpoints return an explicit
 service-unavailable response until database credentials are configured.
-See [docs/backend_api.md](docs/backend_api.md) for routes, data limitations,
-and test commands.
+To deploy on Render, connect the repository and use the included `render.yaml`
+blueprint; provide the Neo4j credentials and deployed frontend origin when
+prompted. See [docs/backend_api.md](docs/backend_api.md) for deployment notes,
+routes, data limitations, and test commands.
 
 ## Phase 2 frontend
 

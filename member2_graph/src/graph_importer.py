@@ -143,50 +143,6 @@ def import_evidence(session, records):
 
 
 
-def import_relationships(session, records, valid_ids):
-    grouped = {}
-
-    for record in records:
-        rel_type = record["relationship_type"]
-
-        if rel_type not in RELATIONSHIP_QUERIES:
-            raise ValueError(f"Unsupported relationship type: {rel_type}")
-
-        if record["source_id"] not in valid_ids:
-            raise ValueError(f"Missing source node: {record['source_id']}")
-
-        if record["target_id"] not in valid_ids:
-            raise ValueError(f"Missing target node: {record['target_id']}")
-
-        grouped.setdefault(rel_type, []).append(record)
-
-    for rel_type, query in RELATIONSHIP_QUERIES.items():
-        query = "UNWIND $rows AS row\n" + query
-
-        for batch in chunks(grouped.get(rel_type, [])):
-            rows = [
-                {
-                    "source_id": r["source_id"],
-                    "target_id": r["target_id"],
-                    "relationship_id": r["relationship_id"],
-                    "properties": {
-                        k: v for k, v in r.items()
-                        if k not in (
-                            "source_id",
-                            "target_id",
-                            "relationship_id",
-                            "relationship_type"
-                        )
-                    }
-                }
-                for r in batch
-            ]
-
-            session.execute_write(
-                lambda tx, q=query, data=rows:
-                    tx.run(q, rows=data).consume()
-            )
-
 
 
 def run_import(data_dir):

@@ -24,6 +24,27 @@ is missing or unavailable; the application can still start so API and UI
 development do not require a live database. Credentials are read from the
 environment and must never be placed in frontend code.
 
+## Deploy on Render
+
+The repository includes a Render Blueprint in `render.yaml`. In Render, create
+a new Blueprint deployment from the repository and provide these prompted
+environment values:
+
+- `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` for a reachable Neo4j
+  instance (for example, Neo4j Aura).
+- `CORS_ORIGINS` set to the exact deployed frontend origin, without a trailing
+  slash. For multiple origins, separate them with commas.
+
+The Blueprint installs dependencies from the repository root and starts the
+API on Render's assigned port. Its `/docs` health check verifies that the
+application is responding; `/api/health` additionally checks the Neo4j
+connection and returns 503 if the database is unavailable.
+
+The API currently has no authentication or authorization. Do not expose it to
+untrusted users or connect it to sensitive production data until access
+controls are implemented and reviewed. Containment operations are simulation
+only.
+
 ## API groups
 
 Successful responses use `{ "success": true, "message": "...", "data": ... }`.
