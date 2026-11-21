@@ -11,5 +11,7 @@ joblib==1.5.3
 # matplotlib==3.9.0        # evaluation charts (Phase 5/6)
 # shap==0.46.0             # optional SHAP explainability (Phase 6)
 # neo4j==5.23.0            # Neo4j Python driver (Phase 8 graph integration)
-# fastapi==0.111.0         # backend API (Phase 10, if team uses Python API)
-# uvicorn==0.30.0          # ASGI server for FastAPI
+
+# Backend API (Phase 10) — required to serve the inference API
+fastapi==0.141.1
+uvicorn==0.52.4
