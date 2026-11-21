@@ -10,7 +10,7 @@ async def health(request: Request) -> JSONResponse:
     status = database_health["status"]
     response = {
         "status": "healthy" if status == "healthy" else "degraded",
-        "database": database_health,
+        "database_status": status,
     }
     return JSONResponse(
         content=response,

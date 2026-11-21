@@ -1,5 +1,8 @@
+import socket
 import unittest
 from unittest.mock import AsyncMock, patch
+
+from neo4j.exceptions import ServiceUnavailable
 
 from backend.app.config import Settings
 from backend.app.database.neo4j_connection import Neo4jConnection, Neo4jConnectionError
@@ -51,6 +54,36 @@ class Neo4jConnectionTests(unittest.IsolatedAsyncioTestCase):
             connection = Neo4jConnection(make_settings("neo4j+s://example.test", "neo4j", "secret"))
 
         connection.connect = AsyncMock(side_effect=Neo4jConnectionError("connection failed"))
+
+        self.assertEqual(await connection.health(), {
+            "status": "unhealthy",
+            "configured": True,
+            "database": "neo4j",
+        })
+
+    async def test_health_reports_dns_resolution_failure_as_unhealthy(self) -> None:
+        dns_error = ValueError("Cannot resolve address")
+        dns_error.__cause__ = socket.gaierror("Name or service not known")
+        with patch("backend.app.database.neo4j_connection.GraphDatabase.driver") as driver_factory:
+            driver_factory.return_value.verify_connectivity.side_effect = dns_error
+            connection = Neo4jConnection(
+                make_settings("neo4j+s://example.test", "neo4j", "secret")
+            )
+
+        self.assertEqual(await connection.health(), {
+            "status": "unhealthy",
+            "configured": True,
+            "database": "neo4j",
+        })
+
+    async def test_health_reports_driver_unavailable_as_unhealthy(self) -> None:
+        with patch("backend.app.database.neo4j_connection.GraphDatabase.driver") as driver_factory:
+            driver_factory.return_value.verify_connectivity.side_effect = ServiceUnavailable(
+                "Unable to retrieve routing information"
+            )
+            connection = Neo4jConnection(
+                make_settings("neo4j+s://example.test", "neo4j", "secret")
+            )
 
         self.assertEqual(await connection.health(), {
             "status": "unhealthy",

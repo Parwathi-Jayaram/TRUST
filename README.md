@@ -102,7 +102,9 @@ The API is documented at `http://127.0.0.1:8000/docs`; readiness is available
 at `http://127.0.0.1:8000/api/health`. Neo4j-backed endpoints return an explicit
 service-unavailable response until database credentials are configured.
 See [docs/backend_api.md](docs/backend_api.md) for routes, data limitations,
-and test commands.
+test commands, and Render deployment setup. Do not deploy the backend until
+the health endpoint is healthy and the required production bearer token and
+CORS origin are configured.
 
 ## Phase 2 frontend
 

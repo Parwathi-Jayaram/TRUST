@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import hmac
 from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
@@ -40,6 +41,8 @@ def create_app(
     detection_engine: Member4DetectionEngine | None = None,
 ) -> FastAPI:
     app_settings = settings or get_settings()
+    if app_settings.app_env == "production" and not app_settings.api_bearer_token:
+        raise RuntimeError("API_BEARER_TOKEN must be configured in production.")
     database = neo4j_connection or Neo4jConnection(app_settings)
     member4_engine = detection_engine or Member4DetectionEngine()
 
@@ -54,6 +57,9 @@ def create_app(
         title="TRUSTRAIL AI API",
         description="Backend API for graph-based security operations workflows.",
         version="0.1.0",
+        docs_url=None if app_settings.app_env == "production" else "/docs",
+        redoc_url=None if app_settings.app_env == "production" else "/redoc",
+        openapi_url=None if app_settings.app_env == "production" else "/openapi.json",
         lifespan=lifespan,
     )
     app.state.settings = app_settings
@@ -62,8 +68,31 @@ def create_app(
         allow_origins=list(app_settings.cors_origins),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH"],
-        allow_headers=["Content-Type"],
+        allow_headers=["Content-Type", "Authorization"],
     )
+
+    @app.middleware("http")
+    async def require_api_bearer_token(request: Request, call_next):
+        if (
+            not app_settings.api_bearer_token
+            or request.url.path == "/api/health"
+            or request.method == "OPTIONS"
+        ):
+            return await call_next(request)
+
+        provided = request.headers.get("Authorization", "")
+        expected = f"Bearer {app_settings.api_bearer_token}"
+        if not hmac.compare_digest(
+            provided.encode("utf-8"),
+            expected.encode("utf-8"),
+        ):
+            return JSONResponse(
+                status_code=401,
+                content={"success": False, "message": "Authentication required.", "data": None},
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        return await call_next(request)
+
     app.include_router(health_router)
     app.include_router(dashboard_router)
     app.include_router(graph_router)

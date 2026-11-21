@@ -24,10 +24,42 @@ is missing or unavailable; the application can still start so API and UI
 development do not require a live database. Credentials are read from the
 environment and must never be placed in frontend code.
 
+## Render deployment
+
+The root `render.yaml` defines a Python web service. In Render, create a
+Blueprint from the GitHub repository and select the branch containing this
+file. Configure the prompted `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`,
+`NEO4J_DATABASE`, `API_BEARER_TOKEN`, and `CORS_ORIGINS` values in Render's
+environment settings. Do not commit these values or put the bearer token in a
+`VITE_` frontend variable.
+
+Production requires `API_BEARER_TOKEN`; the service refuses to start without
+it. The frontend asks each user to enter that token and keeps it in
+`sessionStorage`. Share the token through an approved private channel. The
+health check is public for Render and returns only service status; API docs are
+disabled in production. CORS must be set to the deployed frontend's exact
+origin. Generate the token locally with
+`python -c "import secrets; print(secrets.token_urlsafe(32))"` and enter it
+directly in Render's environment settings.
+
+For the separately hosted frontend, set these build-time variables:
+
+```text
+VITE_API_BASE_URL=https://<render-service>.onrender.com/api
+VITE_API_AUTH_REQUIRED=true
+```
+
+The Render health check intentionally fails while Neo4j is unavailable. Before
+deploying, confirm `GET /api/health` returns 200 locally with the same database
+URI and credentials. Render and the Neo4j instance must also be able to
+communicate over the configured network.
+
 ## API groups
 
 Successful responses use `{ "success": true, "message": "...", "data": ... }`.
-Database and detection failures return explicit non-2xx responses.
+Database and detection failures return explicit non-2xx responses. In
+production, all API routes except `GET /api/health` require the configured
+bearer token.
 
 | Group | Endpoints |
 |---|---|

@@ -16,6 +16,8 @@ class Settings:
     neo4j_database: str
     cors_origins: tuple[str, ...]
     max_graph_depth: int
+    api_bearer_token: str = ""
+    app_env: str = "development"
 
 
 def get_settings() -> Settings:
@@ -32,4 +34,6 @@ def get_settings() -> Settings:
         neo4j_database=os.getenv("NEO4J_DATABASE", "neo4j"),
         cors_origins=tuple(origin.strip() for origin in origins.split(",") if origin.strip()),
         max_graph_depth=max_graph_depth,
+        api_bearer_token=os.getenv("API_BEARER_TOKEN", ""),
+        app_env=os.getenv("APP_ENV", "development").strip().lower(),
     )
