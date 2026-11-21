@@ -45,7 +45,7 @@ function ConnectivityPreview() {
           </div>
           <div className="flex items-center justify-between border-t border-slate-800 px-5 py-2 text-[10px] text-slate-500">
             <span>{layout.nodes.length} entities · {layout.edges.length} relationships</span>
-            <span>Synthetic fixture · click an entity to explore</span>
+            <span>Sample data · click an entity to explore</span>
           </div>
         </>
       ) : <div className="grid h-[330px] place-items-center text-sm text-slate-500">No connectivity data available</div>}
@@ -69,7 +69,7 @@ export default function Dashboard() {
     <div className="space-y-5">
       <div>
         <h1 className="text-xl font-semibold">SOC Command Center</h1>
-        <p className="mt-1 text-sm text-slate-500">Prototype security posture from synthetic fixture data</p>
+        <p className="mt-1 text-sm text-slate-500">Current security posture overview</p>
       </div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Monitored assets" value={o.total_monitored_entities} icon={Boxes} />

@@ -1,4 +1,5 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
+let apiMode = 'unknown'
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
@@ -9,12 +10,17 @@ async function request(path, options = {}) {
     let detail = `Request failed (${response.status})`
     try {
       const body = await response.json()
-      detail = body.detail || body.message || detail
+      const errorDetail = body.detail || body.message
+      detail = Array.isArray(errorDetail)
+        ? errorDetail.map((item) => item.msg || JSON.stringify(item)).join('; ')
+        : typeof errorDetail === 'string' ? errorDetail : detail
     } catch {}
     throw new Error(detail)
   }
   const body = await response.json()
-  return body?.success === true && 'data' in body ? body.data : body
+  const isEnvelope = body?.success === true && 'data' in body
+  apiMode = isEnvelope ? 'neo4j' : 'fixture'
+  return isEnvelope ? body.data : body
 }
 
 function normalizeEntity(entity) {
@@ -135,12 +141,15 @@ export const api = {
   },
   blastRadius: async (id, depth = 3) => {
     const data = await request('/blast-radius/' + encodeURIComponent(id) + '?depth=' + depth)
-    const relationships = (data.relationships || []).map(normalizeRelationship)
-    const entities = (data.entities || data.affected_entities || []).map(normalizeEntity)
+    const relationships = (data.edges || data.relationships || []).map(normalizeRelationship)
+    const entities = (data.affected_entities || data.entities || []).map(normalizeEntity)
+    const nodes = data.nodes
+      ? data.nodes.map(normalizeEntity)
+      : entities
     const source = data.source_entity ? normalizeEntity(data.source_entity) : null
     return {
       ...data,
-      nodes: source ? [source, ...entities] : entities,
+      nodes: source && !nodes.some((node) => String(node.id) === String(source.id)) ? [source, ...nodes] : nodes,
       edges: relationships,
       affected_entities: entities,
       reachable_entities_count: data.reachable_entities_count ?? data.reachable_entity_count,
@@ -153,6 +162,13 @@ export const api = {
   },
   incident: async (id) => normalizeIncident(await request('/incidents/' + encodeURIComponent(id))),
   containment: async (payload) => {
+    if (apiMode === 'fixture') {
+      return request('/containment/simulate', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+    }
+
     const graph = await api.graphSubgraph(payload.entity_id, payload.depth)
     const actionTypes = {
       isolate_host: { action: 'isolate_entity', type: 'host', label: 'host' },

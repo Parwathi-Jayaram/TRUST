@@ -26,8 +26,8 @@ function getEntityExplanation(entity, relatedEdges, graphNodes, persona) {
 
   if (persona === 'executive') {
     const impact = criticality === 'critical' || criticality === 'high'
-      ? 'This asset is marked as a high business-priority asset in the fixture.'
-      : 'The fixture does not mark this asset as high business priority.'
+      ? 'This asset is marked as a high business-priority asset in the available records.'
+      : 'The available records do not mark this asset as high business priority.'
     return `${entityName} is a ${entityType}. ${impact} It has ${links} modeled connection${links === 1 ? '' : 's'} in the displayed neighborhood. A graph connection indicates a relationship, not proof of compromise.`
   }
   if (persona === 'operator') {
@@ -162,7 +162,7 @@ export default function AttackGraph() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-slate-400">
           <span className="inline-flex items-center gap-1.5"><Info size={13} className="text-cyan-400" />Click a node or link for an explanation</span>
           <span>{nodes.length} entities</span><span>{edges.length} relationships</span>
-          <span className="text-amber-300/80">Synthetic prototype data</span>
+          <span className="text-amber-300/80">Demonstration data</span>
         </div>
         <button className="secondary-button h-8 gap-2" onClick={() => { setSelectedElement(null); setSelectedEventId(null) }}>
           <RotateCcw size={13} /> Clear selection
@@ -238,7 +238,7 @@ export default function AttackGraph() {
                       </button>
                     ))}
                   </div>
-                ) : <p className="text-xs leading-5 text-slate-500">No detections linked to this entity in the loaded prototype events.</p>}
+                ) : <p className="text-xs leading-5 text-slate-500">No detections are linked to this entity in the loaded data.</p>}
               </div>
               {selectedEventId && (
                 <div className="rounded-lg border border-slate-800 bg-soc-950 p-3">

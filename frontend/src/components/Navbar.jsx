@@ -31,7 +31,7 @@ function HelpDialog({ onClose }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 id="help-title" className="text-lg font-semibold">SOC workspace guide</h2>
-            <p className="mt-1 text-sm text-slate-400">Quick instructions for this interactive prototype.</p>
+            <p className="mt-1 text-sm text-slate-400">Quick instructions for this SOC workspace.</p>
           </div>
           <button className="secondary-button" onClick={onClose}>Close</button>
         </div>
@@ -40,7 +40,7 @@ function HelpDialog({ onClose }) {
           <div><h3 className="font-semibold text-cyan-300">Choose a reading level</h3><p className="mt-1 leading-6 text-slate-400">Use the profile menu to switch between SOC Analyst, Executive, and IT Operator summaries. These are presentation preferences, not access permissions.</p></div>
           <div><h3 className="font-semibold text-cyan-300">Review an incident</h3><p className="mt-1 leading-6 text-slate-400">Select an incident to see its status, related detections, evidence, and a plain-language explanation. Use the linked entity to open its graph neighborhood.</p></div>
           <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] p-3 text-xs leading-5 text-amber-200/80">
-            Prototype data is synthetic. Containment actions are simulations only; this interface does not isolate devices or change accounts.
+            This workspace uses demonstration data. Containment actions are simulations only; this interface does not isolate devices or change accounts.
           </div>
         </div>
       </section>
@@ -115,7 +115,7 @@ export default function Navbar() {
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-30" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
           </span>
-          <span>Prototype • synthetic data</span>
+          <span>Demo environment</span>
           <span className="ml-1 hidden text-slate-600 md:inline">•</span>
           <span className="hidden md:inline">{location.pathname === '/attack-graph' ? 'Graph explorer' : 'SOC workspace'}</span>
         </div>
@@ -170,7 +170,7 @@ export default function Navbar() {
               <div className="popover right-0 w-64 p-3">
                 <div className="flex items-center gap-3 border-b border-slate-800 px-1 pb-3">
                   <div className="grid h-9 w-9 place-items-center rounded-lg bg-cyan-400/10 text-cyan-300"><ShieldCheck size={18} /></div>
-                  <div><div className="text-sm font-semibold">Alex Rivera</div><div className="text-xs text-slate-500">Prototype analyst profile</div></div>
+                  <div><div className="text-sm font-semibold">Alex Rivera</div><div className="text-xs text-slate-500">SOC analyst profile</div></div>
                 </div>
                 <div className="px-1 pt-3">
                   <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Explanation view</div>
@@ -180,7 +180,7 @@ export default function Navbar() {
                     </button>
                   ))}
                 </div>
-                <div className="mt-2 border-t border-slate-800 px-1 pt-2 text-[10px] leading-4 text-amber-200/70">View preference only; this prototype does not enforce account permissions.</div>
+                <div className="mt-2 border-t border-slate-800 px-1 pt-2 text-[10px] leading-4 text-amber-200/70">View preference only; these choices do not enforce account permissions.</div>
               </div>
             )}
           </div>

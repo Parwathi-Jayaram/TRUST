@@ -10,7 +10,7 @@ function incidentExplanation(incident, threat, persona) {
   const entity = incident?.source_entity_id || 'an unspecified entity'
   if (persona === 'executive') {
     const priority = String(incident?.severity || '').toLowerCase()
-    return `This ${priority || 'unrated'}-severity incident is associated with ${entity}. The linked event is ${threat?.category || 'not available'}. This is a synthetic prototype record and should be validated before operational decisions.`
+    return `This ${priority || 'unrated'}-severity incident is associated with ${entity}. The linked event is ${threat?.category || 'not available'}. This is a demonstration record and should be validated before operational decisions.`
   }
   if (persona === 'operator') {
     return `Review ${entity} and the adjacent assets in its graph neighborhood. The incident is currently ${String(incident?.status || 'unassigned').toLowerCase()}. No isolation or configuration change is performed by this view.`
@@ -102,7 +102,7 @@ export default function Incidents() {
 
               <div className="mt-5 flex gap-2 rounded-lg border border-amber-500/20 bg-amber-500/[0.05] p-3 text-xs leading-5 text-amber-200/80">
                 <LockKeyhole size={15} className="mt-0.5 shrink-0" />
-                <p>Incident status is read-only in this prototype until authenticated, role-based updates are configured.</p>
+                <p>Incident status is read-only until authenticated, role-based updates are configured.</p>
               </div>
             </div>
           )}
