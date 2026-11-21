@@ -11,6 +11,58 @@
 * { scrollbar-width: thin; scrollbar-color: #334155 #0a1019; }
 body { margin: 0; min-width: 320px; }
 button, input, select { font: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid #31c7e8;
+  outline-offset: 2px;
+}
+
+.popover {
+  @apply absolute top-11 z-50 overflow-hidden rounded-xl border border-slate-700 bg-soc-900 shadow-panel;
+}
+
+.explanation-card {
+  @apply rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] p-3;
+}
+
+.entity-node {
+  width: 184px;
+  border: 1px solid #334155;
+  border-left: 3px solid var(--node-accent);
+  border-radius: 9px;
+  background: #111d2d;
+  padding: 10px 11px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, .22);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.entity-node-selected {
+  border-color: var(--node-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-accent) 24%, transparent), 0 10px 24px rgba(0, 0, 0, .3);
+  transform: translateY(-1px);
+}
+
+.react-flow__controls {
+  overflow: hidden;
+  border: 1px solid #334155 !important;
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, .3) !important;
+}
+
+.react-flow__controls-button {
+  border-bottom: 1px solid #334155 !important;
+  background: #0d1623 !important;
+  fill: #cbd5e1 !important;
+}
+
+.react-flow__controls-button:hover {
+  background: #1a2a40 !important;
+}
+
+.react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid #334155;
+  border-radius: 8px;
+}
 
 @layer components {
   .panel {

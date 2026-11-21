@@ -35,10 +35,6 @@ export const api = {
   blastRadius: (id, depth = 3) => request('/blast-radius/' + encodeURIComponent(id) + '?depth=' + depth),
   incidents: () => request('/incidents'),
   incident: (id) => request('/incidents/' + encodeURIComponent(id)),
-  updateIncidentStatus: (id, status) => request('/incidents/' + encodeURIComponent(id) + '/status', {
-    method: 'PATCH',
-    body: JSON.stringify({ status }),
-  }),
   containment: (payload) => request('/containment/simulate', {
     method: 'POST',
     body: JSON.stringify(payload),

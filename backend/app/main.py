@@ -255,21 +255,14 @@ def incident_detail(incident_id: str) -> dict[str, Any]:
     return incident
 
 
-class StatusIn(BaseModel):
-    status: str
-
-
-ALLOWED_STATUSES = {"NEW", "INVESTIGATING", "CONFIRMED", "CONTAINMENT_RECOMMENDED", "CONTAINED", "RESOLVED", "CLOSED"}
-
-
 @app.patch("/api/incidents/{incident_id}/status")
-def update_incident_status(incident_id: str, payload: StatusIn) -> dict[str, Any]:
+def update_incident_status(incident_id: str) -> None:
     if incident_id not in INCIDENTS:
         raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' was not found")
-    if payload.status not in ALLOWED_STATUSES:
-        raise HTTPException(status_code=422, detail="Invalid incident status")
-    INCIDENTS[incident_id]["status"] = payload.status
-    return INCIDENTS[incident_id]
+    raise HTTPException(
+        status_code=503,
+        detail="Incident status updates are disabled until authentication and authorization are configured.",
+    )
 
 
 @app.get("/api/investigations")

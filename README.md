@@ -104,3 +104,11 @@ python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
 
 Open `http://localhost:5173`. FastAPI documentation is available at
 `http://127.0.0.1:8000/docs`.
+
+The prototype includes an interactive asset graph with relationship explanations,
+related synthetic detections, and Analyst/Executive/IT Operator reading views.
+The Command Center shows a clickable graph preview; help, activity notifications,
+and the analyst profile menu are available from the top bar. Persona choices
+change presentation only and do not provide authorization or access control.
+Incident status changes are intentionally disabled until authentication and
+server-side authorization are implemented.
