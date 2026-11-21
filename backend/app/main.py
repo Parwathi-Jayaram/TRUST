@@ -49,7 +49,7 @@ def create_app(
     elif (
         app_settings.demo_fallback
         and app_settings.app_env != "production"
-        and not all((
+        and not any((
             app_settings.neo4j_uri,
             app_settings.neo4j_username,
             app_settings.neo4j_password,
