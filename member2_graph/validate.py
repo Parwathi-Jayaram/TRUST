@@ -4,9 +4,9 @@ Two modes:
   1. Standalone JSONL fixture validation (no Neo4j required) — checks record
      structure, counts, and relationship endpoint validity against the
      ingestion contract.
-  2. Neo4j validation (requires a live connection) — runs Cypher queries to
-     verify node/relationship counts, directions, traceability, timestamps,
-     and idempotency.
+  2. Neo4j validation (requires a live connection) — reports node/relationship
+     counts, directions, traceability, timestamps, and available constraints.
+     It does not assert expected graph counts or perform an idempotency import.
 
 Run the standalone check from the repository root:
     $env:PYTHONPATH = "member2_graph"
@@ -38,7 +38,8 @@ from importer import (
 # ---------------------------------------------------------------------------
 
 def _count_nonempty_lines(path: Path) -> int:
-    return sum(1 for line in path.open("r", encoding="utf-8") if line.strip())
+    with path.open("r", encoding="utf-8") as file:
+        return sum(1 for line in file if line.strip())
 
 
 def validate_fixture(fixture_dir: str | Path) -> dict[str, Any]:
@@ -77,32 +78,87 @@ def validate_fixture(fixture_dir: str | Path) -> dict[str, Any]:
     relationships = records["relationships"]
 
     # Record-level contract validation.
+    valid_entities: list[dict[str, Any]] = []
+    valid_events: list[dict[str, Any]] = []
+    valid_evidence: list[dict[str, Any]] = []
     for rec in entities:
         v = validate_entity(rec)
         if v:
             errors.append(f"entity {rec.get('id')}: {v}")
+        else:
+            valid_entities.append(rec)
     for rec in events:
         v = validate_event(rec)
         if v:
             errors.append(f"event {rec.get('event_id')}: {v}")
+        else:
+            valid_events.append(rec)
     for rec in evidence:
         v = validate_evidence(rec)
         if v:
             errors.append(f"evidence {rec.get('evidence_id')}: {v}")
+        else:
+            valid_evidence.append(rec)
 
-    entity_types = {e["id"]: e["type"] for e in entities}
-    event_ids = {e["event_id"] for e in events}
-    evidence_ids = {e["evidence_id"] for e in evidence}
+    node_groups = (
+        ("entity", valid_entities, "id"),
+        ("event", valid_events, "event_id"),
+        ("evidence", valid_evidence, "evidence_id"),
+    )
+    node_id_counts: dict[str, int] = {}
+    for _, rows, id_field in node_groups:
+        for rec in rows:
+            node_id = rec[id_field]
+            node_id_counts[node_id] = node_id_counts.get(node_id, 0) + 1
+    duplicate_node_ids = {
+        node_id for node_id, count in node_id_counts.items() if count > 1
+    }
+    for label, rows, id_field in node_groups:
+        for rec in rows:
+            node_id = rec[id_field]
+            if node_id in duplicate_node_ids:
+                errors.append(f"{label} {node_id}: duplicate graph node identifier")
+
+    entity_types = {
+        e["id"]: e["type"] for e in valid_entities
+        if e["id"] not in duplicate_node_ids
+    }
+    event_ids = {
+        e["event_id"] for e in valid_events
+        if e["event_id"] not in duplicate_node_ids
+    }
+    evidence_ids = {
+        e["evidence_id"] for e in valid_evidence
+        if e["evidence_id"] not in duplicate_node_ids
+    }
 
     domain_count = 0
     trace_count = 0
     supported_by_count = 0
     observed_on_count = 0
 
+    relationship_ids: dict[str, int] = {}
+    valid_relationships: list[dict[str, Any]] = []
     for rec in relationships:
         v = validate_relationship(rec)
         if v:
             errors.append(f"relationship {rec.get('relationship_id')}: {v}")
+            continue
+        valid_relationships.append(rec)
+        relationship_id = rec["relationship_id"]
+        relationship_ids[relationship_id] = relationship_ids.get(relationship_id, 0) + 1
+
+    duplicate_relationship_ids = {
+        relationship_id
+        for relationship_id, count in relationship_ids.items()
+        if count > 1
+    }
+
+    for rec in valid_relationships:
+        if rec["relationship_id"] in duplicate_relationship_ids:
+            errors.append(
+                f"relationship {rec['relationship_id']}: duplicate relationship identifier"
+            )
             continue
         rtype = rec["relationship_type"]
         category = rec["relationship_category"]
@@ -117,10 +173,10 @@ def validate_fixture(fixture_dir: str | Path) -> dict[str, Any]:
                 errors.append(f"rel {rec['relationship_id']}: unknown target {rec['target_id']}")
                 continue
             allowed_src, allowed_tgt = DOMAIN_ENDPOINT_TYPES[rtype]
-            if src_type not in allowed_src:
+            if str(src_type).casefold() not in allowed_src:
                 errors.append(
                     f"rel {rec['relationship_id']}: {rtype} source type '{src_type}' not in {allowed_src}")
-            if tgt_type not in allowed_tgt:
+            if str(tgt_type).casefold() not in allowed_tgt:
                 errors.append(
                     f"rel {rec['relationship_id']}: {rtype} target type '{tgt_type}' not in {allowed_tgt}")
         elif category == "event_trace":
@@ -141,9 +197,16 @@ def validate_fixture(fixture_dir: str | Path) -> dict[str, Any]:
                     errors.append(f"rel {rec['relationship_id']}: OBSERVED_ON missing endpoint_role")
 
     total_rels = domain_count + trace_count
+    rejected_path = d / "rejected.jsonl"
+    if not rejected_path.is_file():
+        errors.append(f"missing file: {rejected_path}")
+    rejected_lines = (
+        _count_nonempty_lines(rejected_path) if rejected_path.is_file() else 0
+    )
+
     return {
         "files": {name: len(recs) for name, recs in records.items()},
-        "rejected_lines": _count_nonempty_lines(d / "rejected.jsonl"),
+        "rejected_lines": rejected_lines,
         "relationships": {
             "domain_original_entity": domain_count,
             "traceability": trace_count,
@@ -162,9 +225,9 @@ def validate_fixture(fixture_dir: str | Path) -> dict[str, Any]:
 
 # Each entry: (label, cypher, expected)
 NODE_COUNT_QUERIES = [
-    ("Entity", "MATCH (n:Entity) RETURN count(n) AS c"),
-    ("Event", "MATCH (n:Event) RETURN count(n) AS c"),
-    ("Evidence", "MATCH (n:Evidence) RETURN count(n) AS c"),
+    ("Entity", "MATCH (n:GraphNode:Entity) RETURN count(n) AS c"),
+    ("SecurityEvent", "MATCH (n:GraphNode:SecurityEvent) RETURN count(n) AS c"),
+    ("Evidence", "MATCH (n:GraphNode:Evidence) RETURN count(n) AS c"),
 ]
 
 RELATIONSHIP_COUNT_QUERIES = [
@@ -178,28 +241,28 @@ RELATIONSHIP_COUNT_QUERIES = [
 DIRECTION_QUERIES = [
     # Event -> Evidence via SUPPORTED_BY
     ("SUPPORTED_BY direction (start=Event, end=Evidence)",
-     "MATCH (e:Event)-[r:SUPPORTED_BY]->(v:Evidence) RETURN count(r) AS c"),
+     "MATCH (e:GraphNode:SecurityEvent)-[r:SUPPORTED_BY]->(v:GraphNode:Evidence) RETURN count(r) AS c"),
     # Event -> Entity via OBSERVED_ON
     ("OBSERVED_ON direction (start=Event, end=Entity)",
-     "MATCH (e:Event)-[r:OBSERVED_ON]->(t:Entity) RETURN count(r) AS c"),
+     "MATCH (e:GraphNode:SecurityEvent)-[r:OBSERVED_ON]->(t:GraphNode:Entity) RETURN count(r) AS c"),
     # Domain edges should start and end on Entity
     ("Domain edges start/end on Entity",
-     "MATCH (s:Entity)-[r]->(t:Entity) WHERE r.relationship_category = 'original_entity' RETURN count(r) AS c"),
+     "MATCH (s:GraphNode:Entity)-[r]->(t:GraphNode:Entity) WHERE r.relationship_category = 'original_entity' RETURN count(r) AS c"),
 ]
 
 TRACEABILITY_QUERIES = [
     # Every event should have exactly one SUPPORTED_BY to its evidence
     ("Events with SUPPORTED_BY trace",
-     "MATCH (e:Event)-[:SUPPORTED_BY]->(v:Evidence) RETURN count(DISTINCT e) AS c"),
+     "MATCH (e:GraphNode:SecurityEvent)-[:SUPPORTED_BY]->(v:GraphNode:Evidence) RETURN count(DISTINCT e) AS c"),
     # Every event should have OBSERVED_ON to entities
     ("Events with OBSERVED_ON trace",
-     "MATCH (e:Event)-[:OBSERVED_ON]->(t:Entity) RETURN count(DISTINCT e) AS c"),
+     "MATCH (e:GraphNode:SecurityEvent)-[:OBSERVED_ON]->(t:GraphNode:Entity) RETURN count(DISTINCT e) AS c"),
 ]
 
 TIMESTAMP_QUERIES = [
-    ("Events with null event_time", "MATCH (e:Event) WHERE e.event_time IS NULL RETURN count(e) AS c"),
+    ("Events with null event_time", "MATCH (e:GraphNode:SecurityEvent) WHERE e.event_time IS NULL RETURN count(e) AS c"),
     ("Events with timestamp_semantics set",
-     "MATCH (e:Event) WHERE e.timestamp_semantics IS NOT NULL RETURN count(e) AS c"),
+     "MATCH (e:GraphNode:SecurityEvent) WHERE e.timestamp_semantics IS NOT NULL RETURN count(e) AS c"),
 ]
 
 CONSTRAINT_QUERIES = [
@@ -210,33 +273,52 @@ CONSTRAINT_QUERIES = [
 def run_neo4j_validation(driver) -> dict[str, Any]:
     """Run Cypher validation queries against a live Neo4j driver.
 
-    Returns a dict of query name -> result rows / error.
+    Returns query results and execution errors. A successful response means
+    the checks ran; it does not assert expected graph counts or data quality.
     """
-    from neo4j.exceptions import Neo4jError
+    from neo4j.exceptions import DriverError, Neo4jError
+
     results: dict[str, Any] = {}
     errors: list[str] = []
 
     def _run(tx, query):
         return list(tx.run(query))
 
-    with driver.session() as session:
-        for label, query in NODE_COUNT_QUERIES + RELATIONSHIP_COUNT_QUERIES + DIRECTION_QUERIES + TRACEABILITY_QUERIES + TIMESTAMP_QUERIES:
+    try:
+        with driver.session() as session:
+            for label, query in (
+                NODE_COUNT_QUERIES
+                + RELATIONSHIP_COUNT_QUERIES
+                + DIRECTION_QUERIES
+                + TRACEABILITY_QUERIES
+                + TIMESTAMP_QUERIES
+            ):
+                try:
+                    rows = session.execute_read(_run, query)
+                    results[label] = [dict(row) for row in rows]
+                except (DriverError, Neo4jError) as exc:
+                    error_code = getattr(exc, "code", None)
+                    error_name = error_code or type(exc).__name__
+                    errors.append(f"{label}: {error_name}")
+                    results[label] = {"error": error_name}
+
             try:
-                rows = session.execute_read(_run, query)
-                results[label] = [dict(r) for r in rows]
-            except Neo4jError as exc:
-                errors.append(f"{label}: {exc}")
-                results[label] = {"error": str(exc)}
+                rows = session.execute_read(_run, CONSTRAINT_QUERIES[0][1])
+                results[CONSTRAINT_QUERIES[0][0]] = [dict(row) for row in rows]
+            except (DriverError, Neo4jError) as exc:
+                error_code = getattr(exc, "code", None)
+                error_name = error_code or type(exc).__name__
+                errors.append(f"{CONSTRAINT_QUERIES[0][0]}: {error_name}")
+                results[CONSTRAINT_QUERIES[0][0]] = {"error": error_name}
+    except (DriverError, Neo4jError) as exc:
+        error_code = getattr(exc, "code", None)
+        errors.append(f"Neo4j session failed: {error_code or type(exc).__name__}")
 
-        # Constraints (admin command, run once)
-        try:
-            rows = session.execute_read(_run, CONSTRAINT_QUERIES[0][1])
-            results[CONSTRAINT_QUERIES[0][0]] = [dict(r) for r in rows]
-        except Neo4jError as exc:
-            errors.append(f"{CONSTRAINT_QUERIES[0][0]}: {exc}")
-            results[CONSTRAINT_QUERIES[0][0]] = {"error": str(exc)}
-
-    return {"results": results, "errors": errors, "valid": len(errors) == 0}
+    return {
+        "results": results,
+        "errors": errors,
+        "queries_succeeded": not errors,
+    }
 
 
 # ---------------------------------------------------------------------------

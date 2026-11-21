@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import socket
 from typing import Any
 
-from neo4j import Driver, GraphDatabase
-from neo4j.exceptions import Neo4jError
+from neo4j import Driver, GraphDatabase, unit_of_work
+from neo4j.exceptions import DriverError, Neo4jError
 
 from ..config import Settings
 
@@ -46,9 +47,17 @@ class Neo4jConnection:
             )
         try:
             await asyncio.to_thread(self.driver.verify_connectivity)
-        except Neo4jError as exc:
-            logger.error("Neo4j connectivity check failed: %s", exc.code)
+        except (Neo4jError, DriverError) as exc:
+            error = exc.code if isinstance(exc, Neo4jError) else type(exc).__name__
+            logger.error("Neo4j connectivity check failed: %s", error)
             raise Neo4jConnectionError("Neo4j connectivity check failed.") from exc
+        except ValueError as exc:
+            if not isinstance(exc.__cause__, socket.gaierror):
+                raise
+            logger.error("Neo4j host DNS resolution failed.")
+            raise Neo4jConnectionError(
+                "Neo4j host could not be resolved. Check NEO4J_URI and DNS connectivity."
+            ) from exc
 
     async def close(self) -> None:
         if self.driver is not None:
@@ -64,12 +73,18 @@ class Neo4jConnection:
         try:
             def run():
                 with self.driver.session(database=self.settings.neo4j_database) as session:
-                    return [dict(record) for record in session.execute_read(
-                        lambda tx: tx.run(query, parameters or {}).data()
-                    )]
+                    @unit_of_work(timeout=self.settings.neo4j_query_timeout_seconds)
+                    def read_transaction(tx):
+                        return [
+                            dict(record)
+                            for record in tx.run(query, parameters or {}).data()
+                        ]
+
+                    return session.execute_read(read_transaction)
             return await asyncio.to_thread(run)
-        except Neo4jError as exc:
-            logger.error("Neo4j read failed: %s", exc.code)
+        except (Neo4jError, DriverError) as exc:
+            error = exc.code if isinstance(exc, Neo4jError) else type(exc).__name__
+            logger.error("Neo4j read failed: %s", error)
             raise Neo4jConnectionError("Database query failed.") from exc
 
     async def execute_write(
@@ -82,12 +97,18 @@ class Neo4jConnection:
         try:
             def run():
                 with self.driver.session(database=self.settings.neo4j_database) as session:
-                    return [dict(record) for record in session.execute_write(
-                        lambda tx: tx.run(query, parameters or {}).data()
-                    )]
+                    @unit_of_work(timeout=self.settings.neo4j_query_timeout_seconds)
+                    def write_transaction(tx):
+                        return [
+                            dict(record)
+                            for record in tx.run(query, parameters or {}).data()
+                        ]
+
+                    return session.execute_write(write_transaction)
             return await asyncio.to_thread(run)
-        except Neo4jError as exc:
-            logger.error("Neo4j write failed: %s", exc.code)
+        except (Neo4jError, DriverError) as exc:
+            error = exc.code if isinstance(exc, Neo4jError) else type(exc).__name__
+            logger.error("Neo4j write failed: %s", error)
             raise Neo4jConnectionError("Database transaction failed.") from exc
 
     async def health(self) -> dict[str, Any]:

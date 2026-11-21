@@ -11,14 +11,19 @@ class InvestigationDatabase:
     def __init__(self):
         self.investigations = {}
         self.event_ids = {"EVT-001"}
-        self.entity_ids = {"HOST-001"}
+        self.entity_ids = {"HOST-001", "HOST-002"}
+        self.read_calls = []
+        self.graph_paths = []
         self.evidence = {
             "EVD-001": {"evidence_id": "EVD-001", "event_id": "EVT-001"},
         }
 
     async def execute_read(self, query, parameters=None):
         parameters = parameters or {}
+        self.read_calls.append((query, parameters))
         investigation_id = parameters.get("investigation_id")
+        if "MATCH path =" in query:
+            return self.graph_paths
         if "investigation.status AS status" in query:
             investigation = self.investigations.get(investigation_id)
             return [{"status": investigation["status"]}] if investigation else []
@@ -109,8 +114,74 @@ class InvestigationRouteTests(unittest.TestCase):
         return self.client.post("/api/investigations", json={
             "title": "Investigate suspicious activity",
             "alert_id": "EVT-001",
-            "entity_ids": ["HOST-001"],
+            "entity_ids": ["HOST-001", "HOST-002"],
         })
+
+    def test_investigation_attack_paths_reuse_graph_query(self):
+        created = self.create_investigation()
+        investigation_id = created.json()["data"]["id"]
+        self.database.graph_paths = [{
+            "nodes": [
+                {
+                    "id": "HOST-001",
+                    "labels": ["GraphNode", "Entity"],
+                    "properties": {"id": "HOST-001", "type": "Host"},
+                },
+                {
+                    "id": "HOST-002",
+                    "labels": ["GraphNode", "Entity"],
+                    "properties": {"id": "HOST-002", "type": "Server"},
+                },
+            ],
+            "relationships": [{
+                "id": "REL-001",
+                "type": "COMMUNICATES_WITH",
+                "source_id": "HOST-001",
+                "target_id": "HOST-002",
+                "properties": {"relationship_category": "original_entity"},
+            }],
+            "depth": 1,
+        }]
+
+        response = self.client.get(
+            f"/api/investigations/{investigation_id}/attack-paths",
+            params={
+                "source_id": "HOST-001",
+                "target_id": "HOST-002",
+                "depth": 2,
+                "limit": 5,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["investigation_id"], investigation_id)
+        self.assertEqual(data["total_paths"], 1)
+        self.assertIn("not proof", data["interpretation"])
+        graph_query, graph_parameters = self.database.read_calls[-1]
+        self.assertIn("MATCH path =", graph_query)
+        self.assertEqual(graph_parameters, {
+            "source_id": "HOST-001",
+            "target_id": "HOST-002",
+            "limit": 5,
+        })
+
+    def test_investigation_attack_paths_reject_unlinked_endpoints(self):
+        created = self.create_investigation()
+        investigation_id = created.json()["data"]["id"]
+
+        response = self.client.get(
+            f"/api/investigations/{investigation_id}/attack-paths",
+            params={"source_id": "HOST-001", "target_id": "HOST-003"},
+        )
+        same_endpoint_response = self.client.get(
+            f"/api/investigations/{investigation_id}/attack-paths",
+            params={"source_id": "HOST-001", "target_id": "HOST-001"},
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(same_endpoint_response.status_code, 422)
+        self.assertFalse(any("MATCH path =" in query for query, _ in self.database.read_calls))
 
     def test_create_add_notes_attach_evidence_and_read_timeline(self):
         created = self.create_investigation()

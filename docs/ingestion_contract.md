@@ -56,6 +56,10 @@ Supported explicit domain types are `AUTHENTICATED_TO`, `COMMUNICATES_WITH`, `RU
 | `HAS_VULNERABILITY` | server | vulnerability |
 | `INVOLVES` | incident | host, user |
 
+Entity types are preserved from the source and compared case-insensitively by
+the importer. `IPAddress` is accepted as an alias for `ip` in
+`COMMUNICATES_WITH` endpoints.
+
 The exporter also emits traceability edges with `relationship_category: "event_trace"`:
 
 | Source -> target | Relationship type |

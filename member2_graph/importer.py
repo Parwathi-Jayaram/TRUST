@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from neo4j.exceptions import DriverError, Neo4jError
+
 from db import get_driver, close_driver, verify_connectivity, session
 
 
@@ -27,14 +29,14 @@ from db import get_driver, close_driver, verify_connectivity, session
 # Contract constants (from docs/ingestion_contract.md)
 # ---------------------------------------------------------------------------
 
-ENTITY_LABEL = "Entity"
-EVENT_LABEL = "Event"
-EVIDENCE_LABEL = "Evidence"
+ENTITY_LABEL = "GraphNode:Entity"
+EVENT_LABEL = "GraphNode:SecurityEvent"
+EVIDENCE_LABEL = "GraphNode:Evidence"
 
 # Allowed domain relationship endpoint types (source -> target).
 DOMAIN_ENDPOINT_TYPES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "AUTHENTICATED_TO": (("user",), ("host",)),
-    "COMMUNICATES_WITH": (("host", "server"), ("ip", "server")),
+    "COMMUNICATES_WITH": (("host", "server"), ("ip", "ipaddress", "server")),
     "RUNS": (("host",), ("process",)),
     "DEPENDS_ON": (("server",), ("application",)),
     "HAS_VULNERABILITY": (("server",), ("vulnerability",)),
@@ -58,7 +60,7 @@ REQUIRED_EVENT = {
 }
 REQUIRED_EVIDENCE = {
     "evidence_id", "event_id", "source_record_id", "source_system",
-    "observed_at", "is_synthetic", "evidence_status",
+    "observed_at", "is_synthetic",
 }
 REQUIRED_RELATIONSHIP = {
     "relationship_id", "source_id", "target_id", "relationship_type",
@@ -143,6 +145,9 @@ def validate_entity(record: dict[str, Any]) -> str | None:
     err = _missing_required(record, REQUIRED_ENTITY, "entity")
     if err:
         return err
+    for field in ("id", "type"):
+        if not isinstance(record[field], str) or not record[field].strip():
+            return f"entity '{field}' must be a non-empty string"
     if not isinstance(record["synthetic"], bool):
         return "entity 'synthetic' must be a boolean"
     return None
@@ -152,9 +157,16 @@ def validate_event(record: dict[str, Any]) -> str | None:
     err = _missing_required(record, REQUIRED_EVENT, "event")
     if err:
         return err
+    for field in ("event_id", "event_type", "evidence_id"):
+        if not isinstance(record[field], str) or not record[field].strip():
+            return f"event '{field}' must be a non-empty string"
     if not isinstance(record["is_synthetic"], bool):
         return "event 'is_synthetic' must be a boolean"
-    if record["evidence_status"] not in VALID_EVIDENCE_STATUS:
+    evidence_status = record.get("evidence_status")
+    if evidence_status is not None and (
+        not isinstance(evidence_status, str)
+        or evidence_status not in VALID_EVIDENCE_STATUS
+    ):
         return f"event 'evidence_status' must be one of {sorted(VALID_EVIDENCE_STATUS)}"
     return None
 
@@ -163,9 +175,16 @@ def validate_evidence(record: dict[str, Any]) -> str | None:
     err = _missing_required(record, REQUIRED_EVIDENCE, "evidence")
     if err:
         return err
+    for field in ("evidence_id", "event_id", "source_record_id", "source_system"):
+        if not isinstance(record[field], str) or not record[field].strip():
+            return f"evidence '{field}' must be a non-empty string"
     if not isinstance(record["is_synthetic"], bool):
         return "evidence 'is_synthetic' must be a boolean"
-    if record["evidence_status"] not in VALID_EVIDENCE_STATUS:
+    evidence_status = record.get("evidence_status")
+    if evidence_status is not None and (
+        not isinstance(evidence_status, str)
+        or evidence_status not in VALID_EVIDENCE_STATUS
+    ):
         return f"evidence 'evidence_status' must be one of {sorted(VALID_EVIDENCE_STATUS)}"
     return None
 
@@ -174,22 +193,30 @@ def validate_relationship(record: dict[str, Any]) -> str | None:
     err = _missing_required(record, REQUIRED_RELATIONSHIP, "relationship")
     if err:
         return err
+    for field in ("relationship_id", "source_id", "target_id"):
+        if not isinstance(record[field], str) or not record[field].strip():
+            return f"relationship '{field}' must be a non-empty string"
     rtype = record["relationship_type"]
+    if not isinstance(rtype, str):
+        return "relationship 'relationship_type' must be a string"
     if rtype not in ALL_RELATIONSHIP_TYPES:
         return f"unsupported relationship_type: {rtype}"
-    if record["evidence_status"] not in VALID_EVIDENCE_STATUS:
+    evidence_status = record["evidence_status"]
+    if not isinstance(evidence_status, str) or evidence_status not in VALID_EVIDENCE_STATUS:
         return f"relationship 'evidence_status' must be one of {sorted(VALID_EVIDENCE_STATUS)}"
     if not isinstance(record["is_synthetic"], bool):
         return "relationship 'is_synthetic' must be a boolean"
     category = record["relationship_category"]
+    if not isinstance(category, str):
+        return "relationship 'relationship_category' must be a string"
     if category not in {RELATIONSHIP_CATEGORY_ORIGINAL, RELATIONSHIP_CATEGORY_TRACE}:
         return f"unsupported relationship_category: {category}"
     if category == RELATIONSHIP_CATEGORY_TRACE and rtype not in TRACE_TYPES:
         return f"event_trace relationship must use {sorted(TRACE_TYPES)}, got {rtype}"
     if category == RELATIONSHIP_CATEGORY_ORIGINAL and rtype not in DOMAIN_TYPES:
         return f"original_entity relationship must use {sorted(DOMAIN_TYPES)}, got {rtype}"
-    if rtype == "OBSERVED_ON" and "endpoint_role" not in record:
-        return "OBSERVED_ON requires endpoint_role ('source' or 'target')"
+    if rtype == "OBSERVED_ON" and record.get("endpoint_role") not in ("source", "target"):
+        return "OBSERVED_ON requires endpoint_role 'source' or 'target'"
     if record.get("endpoint_role") not in (None, "source", "target"):
         return "endpoint_role must be 'source' or 'target'"
     return None
@@ -205,6 +232,7 @@ def _props(**kwargs: Any) -> dict[str, Any]:
 
 def entity_props(record: dict[str, Any]) -> dict[str, Any]:
     return _props(
+        id=record.get("id"),
         type=record.get("type"),
         name=record.get("name"),
         criticality=record.get("criticality"),
@@ -214,6 +242,8 @@ def entity_props(record: dict[str, Any]) -> dict[str, Any]:
 
 def event_props(record: dict[str, Any]) -> dict[str, Any]:
     return _props(
+        id=record.get("event_id"),
+        event_id=record.get("event_id"),
         event_type=record.get("event_type"),
         event_time=record.get("event_time"),
         event_time_original=record.get("event_time_original"),
@@ -224,13 +254,16 @@ def event_props(record: dict[str, Any]) -> dict[str, Any]:
         is_synthetic=record.get("is_synthetic"),
         source_system=record.get("source_system"),
         source_record_id=record.get("source_record_id"),
+        source_entity_id=record.get("source_entity_id"),
+        target_entity_id=record.get("target_entity_id"),
         ingested_at=record.get("ingested_at"),
         evidence_status=record.get("evidence_status"),
     )
 
-
 def evidence_props(record: dict[str, Any]) -> dict[str, Any]:
     return _props(
+        id=record.get("evidence_id"),
+        evidence_id=record.get("evidence_id"),
         event_id=record.get("event_id"),
         source_record_id=record.get("source_record_id"),
         source_system=record.get("source_system"),
@@ -283,25 +316,25 @@ def _merge_node_cypher(label: str, key: str, key_param: str, props: dict[str, An
 _REL_TEMPLATES = {
     # Domain edges: Entity -> Entity
     "domain": (
-        "MERGE (s:Entity {id: $source_id}) "
-        "MERGE (t:Entity {id: $target_id}) "
+        "MERGE (s:GraphNode:Entity {{id: $source_id}}) "
+        "MERGE (t:GraphNode:Entity {{id: $target_id}}) "
         "MERGE (s)-[r:{rtype} {{relationship_id: $relationship_id}}]->(t) "
         "SET r += $rprops "
         "RETURN r"
     ),
     # SUPPORTED_BY: Event -> Evidence
     "supported_by": (
-        "MERGE (s:Event {event_id: $source_id}) "
-        "MERGE (t:Evidence {evidence_id: $target_id}) "
-        "MERGE (s)-[r:SUPPORTED_BY {{relationship_id: $relationship_id}}]->(t) "
+        "MERGE (s:GraphNode:SecurityEvent {event_id: $source_id}) "
+        "MERGE (t:GraphNode:Evidence {evidence_id: $target_id}) "
+        "MERGE (s)-[r:SUPPORTED_BY {relationship_id: $relationship_id}]->(t) "
         "SET r += $rprops "
         "RETURN r"
     ),
     # OBSERVED_ON: Event -> Entity
     "observed_on": (
-        "MERGE (s:Event {event_id: $source_id}) "
-        "MERGE (t:Entity {id: $target_id}) "
-        "MERGE (s)-[r:OBSERVED_ON {{relationship_id: $relationship_id}}]->(t) "
+        "MERGE (s:GraphNode:SecurityEvent {event_id: $source_id}) "
+        "MERGE (t:GraphNode:Entity {id: $target_id}) "
+        "MERGE (s)-[r:OBSERVED_ON {relationship_id: $relationship_id}]->(t) "
         "SET r += $rprops "
         "RETURN r"
     ),
@@ -314,6 +347,12 @@ _REL_TEMPLATES = {
 
 class Importer:
     def __init__(self, input_dir: str | Path, batch_size: int = BATCH_SIZE_DEFAULT):
+        if (
+            isinstance(batch_size, bool)
+            or not isinstance(batch_size, int)
+            or batch_size < 1
+        ):
+            raise ValueError("batch_size must be a positive integer.")
         self.input_dir = Path(input_dir)
         self.batch_size = batch_size
         self.report = ImportReport()
@@ -343,7 +382,7 @@ class Importer:
         count = 0
         for record in rows:
             props = event_props(record)
-            query, params = _merge_node_cypher(EVENT_LABEL, "event_id", "eid", props)
+            query, params = _merge_node_cypher(EVENT_LABEL, "id", "eid", props)
             tx.run(query, **params)
             count += 1
         return count
@@ -352,7 +391,7 @@ class Importer:
         count = 0
         for record in rows:
             props = evidence_props(record)
-            query, params = _merge_node_cypher(EVIDENCE_LABEL, "evidence_id", "eid", props)
+            query, params = _merge_node_cypher(EVIDENCE_LABEL, "id", "eid", props)
             tx.run(query, **params)
             count += 1
         return count
@@ -398,24 +437,87 @@ class Importer:
             path = self._path(name)
             if not path.is_file():
                 self.report.errors.append(ImportError(name, 0, "", f"file not found: {path}"))
+                setattr(self, f"_{name.split('.')[0]}_valid", [])
                 continue
             rows = read_jsonl(path)
             valid_rows: list[dict[str, Any]] = []
             for line_no, record, error in rows:
                 setattr(self.report, counter, getattr(self.report, counter) + 1)
                 if error is not None:
-                    rec_id = record.get("id") or record.get("event_id") or record.get(
-                        "evidence_id") or record.get("relationship_id") or f"line:{line_no}"
+                    rec_id = (
+                        record.get("id") or record.get("event_id")
+                        or record.get("evidence_id") or record.get("relationship_id")
+                        if isinstance(record, dict)
+                        else None
+                    ) or f"line:{line_no}"
                     self.report.errors.append(ImportError(name, line_no, str(rec_id), error))
                     continue
-                if validator(record) is not None:
-                    rec_id = record.get("id") or record.get("event_id") or record.get(
-                        "evidence_id") or record.get("relationship_id") or f"line:{line_no}"
+                validation_error = validator(record)
+                if validation_error is not None:
+                    rec_id = (
+                        record.get("id") or record.get("event_id")
+                        or record.get("evidence_id") or record.get("relationship_id")
+                    ) or f"line:{line_no}"
                     self.report.errors.append(
-                        ImportError(name, line_no, str(rec_id), validator(record)))
+                        ImportError(name, line_no, str(rec_id), validation_error))
                     continue
                 valid_rows.append(record)
             setattr(self, f"_{name.split('.')[0]}_valid", valid_rows)
+
+        node_groups = (
+            ("_entities_valid", "entities.jsonl", "id"),
+            ("_events_valid", "events.jsonl", "event_id"),
+            ("_evidence_valid", "evidence.jsonl", "evidence_id"),
+        )
+        node_id_counts: dict[str, int] = {}
+        for attribute, _, id_field in node_groups:
+            for record in getattr(self, attribute):
+                node_id = record[id_field]
+                node_id_counts[node_id] = node_id_counts.get(node_id, 0) + 1
+        duplicate_node_ids = {
+            node_id for node_id, count in node_id_counts.items() if count > 1
+        }
+        for attribute, file_name, id_field in node_groups:
+            records = getattr(self, attribute)
+            setattr(self, attribute, [
+                record for record in records
+                if record[id_field] not in duplicate_node_ids
+            ])
+            for record in records:
+                node_id = record[id_field]
+                if node_id in duplicate_node_ids:
+                    self.report.errors.append(ImportError(
+                        file_name,
+                        0,
+                        node_id,
+                        "duplicate graph node identifier across input files",
+                    ))
+
+        relationship_ids: dict[str, int] = {}
+        valid_relationships: list[dict[str, Any]] = []
+        for record in self._relationships_valid:
+            relationship_id = record["relationship_id"]
+            valid_relationships.append(record)
+            relationship_ids[relationship_id] = relationship_ids.get(relationship_id, 0) + 1
+        duplicate_relationship_ids = {
+            relationship_id
+            for relationship_id, count in relationship_ids.items()
+            if count > 1
+        }
+        relationships = valid_relationships
+        self._relationships_valid = [
+            record for record in relationships
+            if record["relationship_id"] not in duplicate_relationship_ids
+        ]
+        for record in relationships:
+            relationship_id = record["relationship_id"]
+            if relationship_id in duplicate_relationship_ids:
+                self.report.errors.append(ImportError(
+                    "relationships.jsonl",
+                    0,
+                    relationship_id,
+                    "duplicate relationship identifier",
+                ))
 
         # Build lookups from valid entities for endpoint validation.
         self.entity_types = {r["id"]: r["type"] for r in self._entities_valid}
@@ -442,11 +544,11 @@ class Importer:
                 record["_import_error"] = f"target entity not found: {target_id}"
                 return
             allowed_src, allowed_tgt = DOMAIN_ENDPOINT_TYPES[rtype]
-            if src_type not in allowed_src:
+            if str(src_type).casefold() not in allowed_src:
                 record["_import_error"] = (
                     f"{rtype} source type '{src_type}' not in {allowed_src}")
                 return
-            if tgt_type not in allowed_tgt:
+            if str(tgt_type).casefold() not in allowed_tgt:
                 record["_import_error"] = (
                     f"{rtype} target type '{tgt_type}' not in {allowed_tgt}")
                 return
@@ -466,38 +568,41 @@ class Importer:
                 return
 
     def import_all(self) -> ImportReport:
-        if not verify_connectivity():
-            self.report.errors.append(
-                ImportError("connection", 0, "", "could not connect to Neo4j"))
+        try:
+            self._validate_and_partition()
+            if not verify_connectivity():
+                self.report.errors.append(
+                    ImportError("connection", 0, "", "could not connect to Neo4j"))
+                return self.report
+
+            with session() as neo_session:
+                neo_session.run("""
+                    CREATE CONSTRAINT graph_node_id IF NOT EXISTS
+                    FOR (n:GraphNode) REQUIRE n.id IS UNIQUE
+                """).consume()
+
+            self.report.entities_imported = self._import_in_batches(
+                self._write_entities_batch, self._entities_valid, "entities")
+            self.report.events_imported = self._import_in_batches(
+                self._write_events_batch, self._events_valid, "events")
+            self.report.evidence_imported = self._import_in_batches(
+                self._write_evidence_batch, self._evidence_valid, "evidence")
+
+            rel_valid = [
+                r for r in self._relationships_valid if "_import_error" not in r
+            ]
+            rel_errors = [
+                r for r in self._relationships_valid if "_import_error" in r
+            ]
+            for r in rel_errors:
+                self.report.errors.append(
+                    ImportError("relationships.jsonl", 0,
+                                r.get("relationship_id", "unknown"), r["_import_error"]))
+            self.report.relationships_imported = self._import_in_batches(
+                self._write_relationships_batch, rel_valid, "relationships")
             return self.report
-
-        self._validate_and_partition()
-
-        # Import nodes.
-        self.report.entities_imported = self._import_in_batches(
-            self._write_entities_batch, self._entities_valid, "entities")
-        self.report.events_imported = self._import_in_batches(
-            self._write_events_batch, self._events_valid, "events")
-        self.report.evidence_imported = self._import_in_batches(
-            self._write_evidence_batch, self._evidence_valid, "evidence")
-
-        # Import relationships (endpoints now exist as nodes).
-        rel_valid = [
-            r for r in self._relationships_valid if "_import_error" not in r
-        ]
-        rel_errors = [
-            r for r in self._relationships_valid if "_import_error" in r
-        ]
-        for r in rel_errors:
-            self.report.errors.append(
-                ImportError("relationships.jsonl", 0,
-                            r.get("relationship_id", "unknown"), r["_import_error"]))
-        self.report.relationships_imported = self._import_in_batches(
-            self._write_relationships_batch, rel_valid, "relationships")
-        self.report.relationships_read = len(self._relationships_valid)
-
-        close_driver()
-        return self.report
+        finally:
+            close_driver()
 
     def _import_in_batches(self, tx_func, rows: list[dict[str, Any]], label: str) -> int:
         total = 0
@@ -506,9 +611,12 @@ class Importer:
             try:
                 written = self._run_batch(tx_func, batch, label)
                 total += written
-            except Exception as exc:  # roll back failed batch, keep going
+            except (DriverError, Neo4jError) as exc:  # roll back failed batch, keep going
                 self.report.batches_failed += 1
-                msg = type(exc).__name__ + ": " + str(exc)
+                error_code = getattr(exc, "code", None)
+                msg = type(exc).__name__
+                if error_code:
+                    msg += f" ({error_code})"
                 for record in batch:
                     rec_id = (
                         record.get("id") or record.get("event_id")

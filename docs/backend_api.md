@@ -24,31 +24,37 @@ is missing or unavailable; the application can still start so API and UI
 development do not require a live database. Credentials are read from the
 environment and must never be placed in frontend code.
 
-## Deploy on Render
+## Render deployment
 
-The repository includes a Render Blueprint in `render.yaml`. In Render, create
-a new Blueprint deployment from the repository and provide these prompted
-environment values:
+The root `render.yaml` defines a Python web service. In Render, create a
+Blueprint from the GitHub repository and select the branch containing this
+file. Configure the prompted `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`,
+`NEO4J_DATABASE`, `API_BEARER_TOKEN`, and `CORS_ORIGINS` values in Render's
+environment settings. Do not commit these values or put the bearer token in a
+`VITE_` frontend variable.
 
-- `NEO4J_URI`, `NEO4J_USERNAME`, and `NEO4J_PASSWORD` for a reachable Neo4j
-  instance (for example, Neo4j Aura).
-- `CORS_ORIGINS` set to the exact deployed frontend origin, without a trailing
-  slash. For multiple origins, separate them with commas.
+Production requires `API_BEARER_TOKEN`; the service refuses to start without
+it. The frontend asks each user to enter that token and keeps it in
+`sessionStorage`. Share the token through an approved private channel. The
+`GET /healthz` liveness check is public for Render and returns only process
+status. `GET /api/health` separately checks Neo4j and may return 503 while the
+database is unavailable. API docs are disabled in production. CORS must be set
+to the exact deployed frontend origin.
 
-The Blueprint installs dependencies from the repository root and starts the
-API on Render's assigned port. Its `/docs` health check verifies that the
-application is responding; `/api/health` additionally checks the Neo4j
-connection and returns 503 if the database is unavailable.
+The backend may start while Neo4j is unavailable. Before relying on database-backed APIs,
+confirm `GET /api/health` returns 200 using the deployment's database settings.
+If it returns 503, the service may have a public URL, but database-backed
+requests are not ready. Render and Neo4j must also be able to communicate over
+the configured network.
 
-The API currently has no authentication or authorization. Do not expose it to
-untrusted users or connect it to sensitive production data until access
-controls are implemented and reviewed. Containment operations are simulation
-only.
+Containment operations are simulation only.
 
 ## API groups
 
 Successful responses use `{ "success": true, "message": "...", "data": ... }`.
-Database and detection failures return explicit non-2xx responses.
+Database and detection failures return explicit non-2xx responses. In
+production, all API routes except `GET /api/health` require the configured
+bearer token.
 
 | Group | Endpoints |
 |---|---|
@@ -59,7 +65,12 @@ Database and detection failures return explicit non-2xx responses.
 | Incidents | `GET /api/incidents`, `GET /{incident_id}`, `POST /api/incidents`, `PATCH /{incident_id}/status`, `PATCH /{incident_id}/priority`, `GET /{incident_id}/timeline` |
 | Blast radius | `GET /api/blast-radius/{entity_id}`, `POST /api/blast-radius/analyze` |
 | Containment | `POST /api/containment/simulate`, `/compare`, `GET /api/containment/recommendations/{incident_id}` |
-| Investigations | `POST /api/investigations`, `GET /api/investigations`, `GET /{investigation_id}`, `POST /{investigation_id}/notes`, `POST /{investigation_id}/evidence`, `GET /{investigation_id}/evidence`, `PATCH /{investigation_id}/status`, `GET /{investigation_id}/timeline` |
+| Investigations | `POST /api/investigations`, `GET /api/investigations`, `GET /{investigation_id}`, `POST /{investigation_id}/notes`, `POST /{investigation_id}/evidence`, `GET /{investigation_id}/evidence`, `PATCH /{investigation_id}/status`, `GET /{investigation_id}/timeline`, `GET /{investigation_id}/attack-paths?source_id=...&target_id=...&depth=3&limit=20` |
+
+The investigation attack-path endpoint runs the existing bounded graph query
+on demand; both endpoints must be linked to the investigation. It does not
+persist results. Returned directed paths indicate possible graph connectivity,
+not proof that an attacker traversed the path.
 
 Graph list endpoints are paginated. Graph traversal depth is bounded by
 `MAX_GRAPH_DEPTH` (default 4, maximum 6); subgraph and blast-radius queries also

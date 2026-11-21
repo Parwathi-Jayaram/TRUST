@@ -1,11 +1,35 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 let apiMode = 'unknown'
+const TOKEN_STORAGE_KEY = 'trustrail_api_token'
+
+export function getApiToken() {
+  return sessionStorage.getItem(TOKEN_STORAGE_KEY) || ''
+}
+
+export function setApiToken(token) {
+  sessionStorage.setItem(TOKEN_STORAGE_KEY, token)
+}
+
+export function clearApiToken() {
+  sessionStorage.removeItem(TOKEN_STORAGE_KEY)
+}
 
 async function request(path, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  }
+  const token = getApiToken()
+  if (token) headers.Authorization = `Bearer ${token}`
+
   const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
+    headers,
   })
+  if (response.status === 401) {
+    clearApiToken()
+    window.dispatchEvent(new Event('trustrail-api-unauthorized'))
+  }
   if (!response.ok) {
     let detail = `Request failed (${response.status})`
     try {
@@ -219,6 +243,15 @@ export const api = {
     return normalizeInvestigation(data)
   },
   investigation: async (id) => normalizeInvestigation(await request('/investigations/' + encodeURIComponent(id))),
+  investigationAttackPaths: async (id, sourceId, targetId) => {
+    const query = new URLSearchParams({
+      source_id: sourceId,
+      target_id: targetId,
+    }).toString()
+    return request(
+      '/investigations/' + encodeURIComponent(id) + '/attack-paths?' + query,
+    )
+  },
   addNote: async (id, payload) => normalizeInvestigation(await request('/investigations/' + encodeURIComponent(id) + '/notes', {
     method: 'POST',
     body: JSON.stringify({ content: payload.content || payload.note }),

@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Navbar from './components/Navbar'
+import ApiAccessGate from './components/ApiAccessGate'
 import Dashboard from './pages/Dashboard'
 import ThreatHunting from './pages/ThreatHunting'
 import AttackGraph from './pages/AttackGraph'
@@ -10,8 +12,33 @@ import Incidents from './pages/Incidents'
 import Investigations from './pages/Investigations'
 import Settings from './pages/Settings'
 import { PersonaProvider } from './context/PersonaContext'
+import { clearApiToken, getApiToken, setApiToken } from './services/api'
+
+const API_AUTH_REQUIRED = import.meta.env.VITE_API_AUTH_REQUIRED === 'true'
 
 export default function App() {
+  const [apiToken, setApiTokenState] = useState(getApiToken)
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      clearApiToken()
+      setApiTokenState('')
+    }
+    window.addEventListener('trustrail-api-unauthorized', handleUnauthorized)
+    return () => window.removeEventListener('trustrail-api-unauthorized', handleUnauthorized)
+  }, [])
+
+  if (API_AUTH_REQUIRED && !apiToken) {
+    return (
+      <ApiAccessGate
+        onSubmit={(token) => {
+          setApiToken(token)
+          setApiTokenState(token)
+        }}
+      />
+    )
+  }
+
   return (
     <PersonaProvider>
       <div className="min-h-screen bg-soc-950 text-slate-100">
