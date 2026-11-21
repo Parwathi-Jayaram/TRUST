@@ -30,6 +30,15 @@ class GraphDatabase:
                 "labels": ["GraphNode", "Entity"],
                 "properties": {"id": "HOST-001", "type": "Host"},
             }]
+        if "MATCH path =" in query:
+            return [{
+                "nodes": [
+                    {"id": "HOST-001", "labels": ["GraphNode", "Entity"], "properties": {"id": "HOST-001"}},
+                    {"id": "SERVER-001", "labels": ["GraphNode", "Entity"], "properties": {"id": "SERVER-001"}},
+                ],
+                "relationships": [{"relationship_id": "REL-001", "type": "CONNECTS_TO"}],
+                "depth": 1,
+            }]
         if "OPTIONAL MATCH path" in query:
             if not self.entity_exists:
                 return []
@@ -91,6 +100,31 @@ class GraphRouteTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.client_context.__exit__(None, None, None)
+
+    def test_attack_paths_returns_directed_path_results(self) -> None:
+        response = self.client.get(
+            "/api/graph/attack-paths/HOST-001/SERVER-001?depth=3&limit=10"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["source_id"], "HOST-001")
+        self.assertEqual(data["target_id"], "SERVER-001")
+        self.assertEqual(data["total_paths"], 1)
+        self.assertEqual(data["paths"][0]["depth"], 1)
+        query, parameters = self.database.calls[-1]
+        self.assertIn("-[*1..3]->", query)
+        self.assertEqual(parameters, {
+            "source_id": "HOST-001",
+            "target_id": "SERVER-001",
+            "limit": 10,
+        })
+
+    def test_attack_paths_reject_depth_above_configured_maximum(self) -> None:
+        response = self.client.get(
+            "/api/graph/attack-paths/HOST-001/SERVER-001?depth=5"
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertFalse(any("MATCH path =" in query for query, _ in self.database.calls))
 
     def test_graph_overview_returns_actual_aggregate_counts(self) -> None:
         response = self.client.get("/api/graph/overview")
