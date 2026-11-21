@@ -80,3 +80,26 @@ Output records are deterministic for the same dataset ID, source record IDs, and
 $env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
 ```
+
+## Phase 1 backend
+
+The modular FastAPI backend integrates the existing Neo4j graph, Member 4
+inference/risk-scoring modules, and normalized graph data. It does not execute
+real containment actions.
+
+From the repository root in PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r backend\requirements.txt
+Copy-Item backend\.env.example .env
+# Set the Neo4j credentials and CORS_ORIGINS in .env before starting.
+python -m uvicorn backend.app.main:app --reload
+```
+
+The API is documented at `http://127.0.0.1:8000/docs`; readiness is available
+at `http://127.0.0.1:8000/api/health`. Neo4j-backed endpoints return an explicit
+service-unavailable response until database credentials are configured.
+See [docs/backend_api.md](docs/backend_api.md) for routes, data limitations,
+and test commands.
