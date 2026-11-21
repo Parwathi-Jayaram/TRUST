@@ -75,7 +75,7 @@ def create_app(
     async def require_api_bearer_token(request: Request, call_next):
         if (
             not app_settings.api_bearer_token
-            or request.url.path == "/api/health"
+            or request.url.path in {"/api/health", "/healthz"}
             or request.method == "OPTIONS"
         ):
             return await call_next(request)
@@ -92,6 +92,10 @@ def create_app(
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return await call_next(request)
+
+    @app.get("/healthz", include_in_schema=False)
+    async def liveness() -> dict[str, str]:
+        return {"status": "ok"}
 
     app.include_router(health_router)
     app.include_router(dashboard_router)

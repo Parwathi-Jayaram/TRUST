@@ -36,9 +36,10 @@ environment settings. Do not commit these values or put the bearer token in a
 Production requires `API_BEARER_TOKEN`; the service refuses to start without
 it. The frontend asks each user to enter that token and keeps it in
 `sessionStorage`. Share the token through an approved private channel. The
-health check is public for Render and returns only service status; API docs are
-disabled in production. CORS must be set to the deployed frontend's exact
-origin. Generate the token locally with
+`GET /healthz` liveness check is public for Render and returns only process
+status. `GET /api/health` separately checks Neo4j and may return 503 while the
+database is unavailable. API docs are disabled in production. CORS must be set
+to the deployed frontend's exact origin. Generate the token locally with
 `python -c "import secrets; print(secrets.token_urlsafe(32))"` and enter it
 directly in Render's environment settings.
 

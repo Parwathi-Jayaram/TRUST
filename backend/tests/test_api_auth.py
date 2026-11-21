@@ -70,6 +70,12 @@ class ApiBearerAuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(health.status_code, 200)
 
+    def test_liveness_endpoint_is_public_for_host_health_checks(self):
+        response = self.client.get("/healthz")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok"})
+
     def test_cors_preflight_allows_authorization_header(self):
         response = self.client.options(
             "/api/dashboard/overview",
