@@ -29,10 +29,17 @@ async function request(path, options = {}) {
   const token = getApiToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  })
+  let response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+    })
+  } catch (error) {
+    throw new Error(
+      `Cannot reach the TRUSTRAIL backend at ${BASE_URL}. Start the FastAPI server on port 8000.`,
+    )
+  }
   if (response.status === 401) {
     clearApiToken()
     window.dispatchEvent(new Event('trustrail-api-unauthorized'))
@@ -97,6 +104,7 @@ function normalizeSubgraph(graph) {
 }
 
 export const api = {
+  health: async () => request('/health'),
   dashboard: async () => {
     const data = await request('/dashboard/overview')
     return data.counts

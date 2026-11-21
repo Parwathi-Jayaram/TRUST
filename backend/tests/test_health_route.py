@@ -34,6 +34,19 @@ def make_settings() -> Settings:
 
 
 class HealthRouteTests(unittest.TestCase):
+    def test_development_missing_neo4j_uses_labeled_synthetic_fallback(self) -> None:
+        app = create_app(make_settings())
+
+        with TestClient(app) as client:
+            health = client.get("/api/health")
+            overview = client.get("/api/dashboard/overview")
+
+        self.assertEqual(health.status_code, 200)
+        self.assertTrue(health.json()["synthetic"])
+        self.assertEqual(health.json()["mode"], "synthetic_demo")
+        self.assertEqual(overview.status_code, 200)
+        self.assertTrue(overview.json()["data"]["counts"]["total_monitored_entities"] > 0)
+
     def test_healthy_database_returns_success_and_closes_driver(self) -> None:
         database = StubNeo4jConnection("healthy")
         app = create_app(make_settings(), database)

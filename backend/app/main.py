@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from .config import Settings, get_settings
 from .database.neo4j_connection import Neo4jConnection, Neo4jConnectionError
+from .database.demo_connection import SyntheticFixtureConnection
 from .routes.dashboard import router as dashboard_router
 from .routes.blast_radius import router as blast_radius_router
 from .routes.containment import router as containment_router
@@ -43,7 +44,20 @@ def create_app(
     app_settings = settings or get_settings()
     if app_settings.app_env == "production" and not app_settings.api_bearer_token:
         raise RuntimeError("API_BEARER_TOKEN must be configured in production.")
-    database = neo4j_connection or Neo4jConnection(app_settings)
+    if neo4j_connection is not None:
+        database = neo4j_connection
+    elif (
+        app_settings.demo_fallback
+        and app_settings.app_env != "production"
+        and not all((
+            app_settings.neo4j_uri,
+            app_settings.neo4j_username,
+            app_settings.neo4j_password,
+        ))
+    ):
+        database = SyntheticFixtureConnection(app_settings)
+    else:
+        database = Neo4jConnection(app_settings)
     member4_engine = detection_engine or Member4DetectionEngine()
 
     @asynccontextmanager

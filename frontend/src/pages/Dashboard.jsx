@@ -91,6 +91,7 @@ export default function Dashboard() {
   const overview = useApi(api.dashboard)
   const distribution = useApi(api.threatDistribution)
   const activity = useApi(api.recentActivity)
+  const health = useApi(api.health)
 
   if (overview.loading) return <LoadingState label="Loading SOC overview..." />
   if (overview.error) return <ErrorState error={overview.error} onRetry={overview.reload} />
@@ -99,6 +100,7 @@ export default function Dashboard() {
   const severityData = Object.entries(distribution.data?.by_severity || {}).map(([name, value]) => ({ name, value }))
   const events = activity.data?.items || []
   const syntheticActivityCount = events.filter((item) => item.is_synthetic === true).length
+  const syntheticFallback = health.data?.synthetic === true
   const syntheticDistributionNotice = (distribution.data?.limitations || []).some((limit) =>
     String(limit).toLowerCase().includes('synthetic'),
   )
@@ -110,7 +112,7 @@ export default function Dashboard() {
           <h1 className="text-xl font-semibold">SOC Command Center</h1>
           <p className="mt-1 text-sm text-slate-500">Current security posture overview</p>
         </div>
-        {(syntheticActivityCount > 0 || syntheticDistributionNotice) && (
+        {(syntheticActivityCount > 0 || syntheticDistributionNotice || syntheticFallback) && (
           <div className="rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2">
             <div className="flex items-center gap-2">
               <ProvenanceBadge isSynthetic={true} />
