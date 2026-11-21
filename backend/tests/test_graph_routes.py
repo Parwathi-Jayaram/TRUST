@@ -30,7 +30,7 @@ class GraphDatabase:
                 "labels": ["GraphNode", "Entity"],
                 "properties": {"id": "HOST-001", "type": "Host"},
             }]
-        if "OPTIONAL MATCH path" in query:
+        if "source_labels" in query:
             if not self.entity_exists:
                 return []
             return [{
