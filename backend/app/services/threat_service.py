@@ -124,6 +124,6 @@ class ThreatService:
             ),
             "investigation_priority": prediction.get("investigation_priority"),
             "evidence_status": prediction.get("evidence_status"),
-            "is_synthetic": event.get("is_synthetic", False),
+            "is_synthetic": event.get("is_synthetic"),
             "limitations": prediction.get("limitations", []),
         }

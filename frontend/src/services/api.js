@@ -1,3 +1,10 @@
+import {
+  normalizeAttackPaths,
+  normalizeEntity,
+  normalizeRecentActivity,
+  normalizeRelationship,
+} from '../utils/integrationData'
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api'
 let apiMode = 'unknown'
 const TOKEN_STORAGE_KEY = 'trustrail_api_token'
@@ -22,10 +29,17 @@ async function request(path, options = {}) {
   const token = getApiToken()
   if (token) headers.Authorization = `Bearer ${token}`
 
-  const response = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-  })
+  let response
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+    })
+  } catch (error) {
+    throw new Error(
+      `Cannot reach the TRUSTRAIL backend at ${BASE_URL}. Start the FastAPI server on port 8000.`,
+    )
+  }
   if (response.status === 401) {
     clearApiToken()
     window.dispatchEvent(new Event('trustrail-api-unauthorized'))
@@ -45,29 +59,6 @@ async function request(path, options = {}) {
   const isEnvelope = body?.success === true && 'data' in body
   apiMode = isEnvelope ? 'neo4j' : 'fixture'
   return isEnvelope ? body.data : body
-}
-
-function normalizeEntity(entity) {
-  const properties = entity.properties || entity
-  return {
-    ...entity,
-    ...properties,
-    id: entity.id || properties.id,
-    name: entity.name || properties.name,
-    type: entity.type || properties.type || entity.labels?.[0],
-    properties,
-  }
-}
-
-function normalizeRelationship(relationship) {
-  const properties = relationship.properties || {}
-  return {
-    ...relationship,
-    id: relationship.id || properties.relationship_id,
-    source: relationship.source || relationship.source_id,
-    target: relationship.target || relationship.target_id,
-    type: relationship.type || properties.relationship_type,
-  }
 }
 
 function normalizeIncident(incident) {
@@ -113,9 +104,12 @@ function normalizeSubgraph(graph) {
 }
 
 export const api = {
+  health: async () => request('/health'),
   dashboard: async () => {
     const data = await request('/dashboard/overview')
-    return data.counts ? { ...data.counts } : data
+    return data.counts
+      ? { ...data.counts, unavailable_metrics: data.unavailable_metrics || {} }
+      : data
   },
   threatDistribution: async () => {
     const data = await request('/dashboard/threat-distribution')
@@ -124,19 +118,11 @@ export const api = {
     for (const item of data.distribution || []) {
       by_severity[item.severity] = (by_severity[item.severity] || 0) + item.count
     }
-    return { by_severity }
+    return { ...data, by_severity }
   },
   recentActivity: async () => {
     const data = await request('/dashboard/recent-activity')
-    if (data.items) return data
-    return {
-      items: (data.events || []).map((event) => ({
-        ...event,
-        id: event.id || event.event_id,
-        description: event.description || event.event_type,
-        timestamp: event.timestamp || event.event_time,
-      })),
-    }
+    return normalizeRecentActivity(data)
   },
   graphEntities: async (params = {}) => {
     const query = new URLSearchParams(params).toString()
@@ -146,6 +132,14 @@ export const api = {
   graphSubgraph: async (id, depth = 2) => {
     const data = await request('/graph/subgraph/' + encodeURIComponent(id) + '?depth=' + depth)
     return normalizeSubgraph(data)
+  },
+  attackPaths: async (sourceId, targetId, depth = 3, limit = 20) => {
+    const query = new URLSearchParams({ depth: String(depth), limit: String(limit) })
+    const data = await request(
+      '/graph/attack-paths/' + encodeURIComponent(sourceId)
+        + '/' + encodeURIComponent(targetId) + '?' + query,
+    )
+    return normalizeAttackPaths(data)
   },
   graphEntity: async (id) => normalizeEntity(await request('/graph/entity/' + encodeURIComponent(id))),
   threats: async (params = {}) => {

@@ -45,11 +45,7 @@ class GraphDatabase:
             return [{
                 "source_labels": ["GraphNode", "Entity"],
                 "source_properties": {"id": "HOST-001", "type": "Host"},
-                "nodes": [{
-                    "id": "HOST-001",
-                    "labels": ["GraphNode", "Entity"],
-                    "properties": {"id": "HOST-001", "type": "Host"},
-                }],
+                "nodes": [],
                 "relationships": [],
             }]
         if "OPTIONAL MATCH (entity)-[relationship]-(neighbor" in query:
@@ -179,4 +175,36 @@ class GraphRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["root"]["properties"]["id"], "HOST-001")
-        self.assertEqual(data["nodes"], [{"id": "HOST-001", "labels": ["GraphNode", "Entity"], "properties": {"id": "HOST-001", "type": "Host"}}])
+        self.assertEqual(data["nodes"], [])
+        self.assertEqual(data["relationships"], [])
+
+    def test_synthetic_fallback_supports_graph_neighbors_and_relationships(self) -> None:
+        with TestClient(create_app(make_settings())) as client:
+            neighbors = client.get("/api/graph/neighbors/HOST-001")
+            relationships = client.get("/api/graph/relationships/HOST-001")
+            created = client.post(
+                "/api/investigations",
+                json={
+                    "title": "Synthetic graph test",
+                    "alert_id": "EVT-001",
+                    "entity_ids": ["HOST-001", "SRV-001"],
+                },
+            )
+            activity = client.get("/api/dashboard/recent-activity")
+
+        self.assertEqual(neighbors.status_code, 200)
+        self.assertEqual(
+            neighbors.json()["data"]["entity"]["properties"]["id"],
+            "HOST-001",
+        )
+        self.assertGreater(len(neighbors.json()["data"]["neighbors"]), 0)
+        self.assertEqual(relationships.status_code, 200)
+        self.assertGreater(len(relationships.json()["data"]["relationships"]), 0)
+        self.assertEqual(created.status_code, 201)
+        investigation_id = created.json()["data"]["id"]
+        investigation_activity = next(
+            item
+            for item in activity.json()["data"]["investigations"]
+            if item["investigation_id"] == investigation_id
+        )
+        self.assertTrue(investigation_activity["is_synthetic"])

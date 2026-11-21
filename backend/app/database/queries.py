@@ -10,7 +10,9 @@ RETURN
         THEN entity END) AS servers,
     count(CASE WHEN toLower(coalesce(entity.type, '')) = 'incident'
           AND toUpper(coalesce(entity.status, '')) IN $active_incident_statuses
-        THEN entity END) AS active_incidents
+        THEN entity END) AS active_incidents,
+    count(CASE WHEN toLower(coalesce(entity.type, '')) = 'investigation'
+        THEN entity END) AS current_investigation_count
 """
 
 DASHBOARD_RECENT_EVENTS = """
@@ -298,7 +300,8 @@ RETURN
     investigation.id AS investigation_id,
     investigation.title AS title,
     investigation.status AS status,
-    investigation.updated_at AS updated_at
+    investigation.updated_at AS updated_at,
+    investigation.is_synthetic AS is_synthetic
 ORDER BY investigation.updated_at DESC, investigation.id
 LIMIT $limit
 """

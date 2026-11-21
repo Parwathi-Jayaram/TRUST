@@ -54,9 +54,6 @@ class DashboardService:
             "high_risk_entities": (
                 "No confirmed entity risk-score field is available."
             ),
-            "current_investigation_count": (
-                "Investigation records are not currently persisted in Neo4j."
-            ),
         }
         counts = {
             "total_monitored_entities": row["total_monitored_entities"],
@@ -68,7 +65,7 @@ class DashboardService:
             "active_incidents": row["active_incidents"],
             "critical_alerts": None,
             "high_risk_entities": None,
-            "current_investigation_count": None,
+            "current_investigation_count": row["current_investigation_count"],
         }
         return {
             "counts": counts,

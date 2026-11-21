@@ -3,6 +3,7 @@ import unittest
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
+from backend.app.database.neo4j_connection import Neo4jConnectionError
 from backend.app.main import create_app
 
 
@@ -34,6 +35,32 @@ def make_settings() -> Settings:
 
 
 class HealthRouteTests(unittest.TestCase):
+    def test_partial_neo4j_configuration_is_not_masked_by_demo_fallback(self) -> None:
+        settings = Settings(
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_username="",
+            neo4j_password="",
+            neo4j_database="neo4j",
+            cors_origins=("http://localhost:5173",),
+            max_graph_depth=4,
+        )
+
+        with self.assertRaisesRegex(Neo4jConnectionError, "configuration is incomplete"):
+            create_app(settings)
+
+    def test_development_missing_neo4j_uses_labeled_synthetic_fallback(self) -> None:
+        app = create_app(make_settings())
+
+        with TestClient(app) as client:
+            health = client.get("/api/health")
+            overview = client.get("/api/dashboard/overview")
+
+        self.assertEqual(health.status_code, 200)
+        self.assertTrue(health.json()["synthetic"])
+        self.assertEqual(health.json()["mode"], "synthetic_demo")
+        self.assertEqual(overview.status_code, 200)
+        self.assertTrue(overview.json()["data"]["counts"]["total_monitored_entities"] > 0)
+
     def test_healthy_database_returns_success_and_closes_driver(self) -> None:
         database = StubNeo4jConnection("healthy")
         app = create_app(make_settings(), database)
