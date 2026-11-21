@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {"criticality": "medium", "id": "USR-001", "name": "alex.morgan", "synthetic": true, "type": "User"}
 {"criticality": "low", "id": "USR-002", "name": "sam.lee", "synthetic": true, "type": "User"}
 {"criticality": "high", "id": "USR-003", "name": "it.admin", "synthetic": true, "type": "User"}
@@ -16,3 +17,23 @@
 {"criticality": "unknown", "id": "PROC-001", "name": "powershell.exe", "synthetic": true, "type": "Process"}
 {"criticality": "high", "id": "VULN-001", "name": "CVE-2024-0001-SIMULATED", "synthetic": true, "type": "Vulnerability"}
 {"criticality": "high", "id": "INC-001", "name": "INC-SIM-001", "synthetic": true, "type": "Incident"}
+=======
+{"criticality": "medium", "id": "USR-001", "name": "alex.morgan", "synthetic": true, "type": "user"}
+{"criticality": "high", "id": "USR-002", "name": "sam.jones", "synthetic": true, "type": "user"}
+{"criticality": "medium", "id": "HOST-001", "name": "demo-endpoint-01", "synthetic": true, "type": "host"}
+{"criticality": "low", "id": "HOST-002", "name": "demo-endpoint-02", "synthetic": true, "type": "host"}
+{"criticality": "medium", "id": "HOST-003", "name": "workstation-07", "synthetic": true, "type": "host"}
+{"criticality": "medium", "id": "SRV-001", "name": "demo-server", "synthetic": true, "type": "server"}
+{"criticality": "high", "id": "SRV-002", "name": "db-server-01", "synthetic": true, "type": "server"}
+{"criticality": "low", "id": "SRV-003", "name": "backup-server-01", "synthetic": true, "type": "server"}
+{"criticality": "low", "id": "APP-001", "name": "demo-application", "synthetic": true, "type": "application"}
+{"criticality": "medium", "id": "APP-002", "name": "web-app-02", "synthetic": true, "type": "application"}
+{"criticality": "medium", "id": "APP-003", "name": "api-gateway-03", "synthetic": true, "type": "application"}
+{"id": "VUL-001", "name": "CVE-DEMO-0001", "synthetic": true, "type": "vulnerability"}
+{"id": "VUL-002", "name": "CVE-DEMO-0002", "synthetic": true, "type": "vulnerability"}
+{"id": "INC-001", "name": "demo-incident", "synthetic": true, "type": "incident"}
+{"id": "IP-001", "name": "10.0.0.5", "synthetic": true, "type": "ip"}
+{"id": "IP-002", "name": "10.0.0.99", "synthetic": true, "type": "ip"}
+{"id": "PROC-001", "name": "demo-client", "synthetic": true, "type": "process"}
+{"id": "PROC-002", "name": "powershell.exe", "synthetic": true, "type": "process"}
+>>>>>>> eb87fa0 (neo4j)
