@@ -160,3 +160,44 @@ class GraphService:
             "depth": depth,
             "path_limit": limit,
         })
+    
+    async def find_attack_paths(
+        self,
+        source_id: str,
+        target_id: str,
+        depth: int = 3,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        if not 1 <= depth <= self.max_depth:
+            raise ValueError(
+                f"Depth must be between 1 and {self.max_depth}."
+            )
+
+        query = queries.graph_attack_paths_query(depth)
+
+        rows = await self.database.execute_read(
+            query,
+            parameters={
+                "source_id": source_id,
+                "target_id": target_id,
+                "limit": limit,
+            },
+        )
+
+        paths = [
+            {
+                "nodes": row["nodes"],
+                "relationships": row["relationships"],
+                "depth": row["depth"],
+            }
+            for row in rows
+        ]
+
+        return serialize_neo4j_value({
+            "source_id": source_id,
+            "target_id": target_id,
+            "paths": paths,
+            "total_paths": len(paths),
+            "max_depth": depth,
+        })
+

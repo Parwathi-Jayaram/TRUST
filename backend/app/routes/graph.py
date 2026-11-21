@@ -78,3 +78,27 @@ async def graph_subgraph(
     if subgraph is None:
         raise HTTPException(status_code=404, detail="Graph entity not found.")
     return success(subgraph)
+@router.get("/attack-paths/{source_id}/{target_id}")
+async def graph_attack_paths(
+    source_id: str,
+    target_id: str,
+    request: Request,
+    depth: int = Query(default=3, ge=1, le=6),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    service = graph_service(request)
+
+    if depth > service.max_depth:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Depth cannot exceed the configured maximum of {service.max_depth}.",
+        )
+
+    result = await service.find_attack_paths(
+        source_id=source_id,
+        target_id=target_id,
+        depth=depth,
+        limit=limit,
+    )
+
+    return success(result)
