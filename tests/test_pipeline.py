@@ -381,6 +381,14 @@ class GraphCsvExportTests(unittest.TestCase):
                 json.loads(line)
                 for line in (root / "out" / "relationships.jsonl").read_text().splitlines()
             ]
+            events = [
+                json.loads(line)
+                for line in (root / "out" / "events.jsonl").read_text().splitlines()
+            ]
+            evidence = [
+                json.loads(line)
+                for line in (root / "out" / "evidence.jsonl").read_text().splitlines()
+            ]
             trace = [item for item in relationships if item["relationship_category"] == "event_trace"]
 
             self.assertEqual(entities[0], {
@@ -397,6 +405,8 @@ class GraphCsvExportTests(unittest.TestCase):
             original = next(item for item in relationships if item["relationship_id"] == "REL-001")
             self.assertEqual(original["relationship_category"], "original_entity")
             self.assertEqual(original["evidence_status"], "unconfirmed")
+            self.assertEqual(events[0]["evidence_status"], "unconfirmed")
+            self.assertEqual(evidence[0]["evidence_status"], "unconfirmed")
             self.assertEqual(
                 {
                     (item["relationship_type"], item.get("endpoint_role"), item["source_id"], item["target_id"])

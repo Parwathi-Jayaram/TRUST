@@ -5,7 +5,7 @@ import logging
 import socket
 from typing import Any
 
-from neo4j import Driver, GraphDatabase
+from neo4j import Driver, GraphDatabase, unit_of_work
 from neo4j.exceptions import DriverError, Neo4jError
 
 from ..config import Settings
@@ -73,9 +73,14 @@ class Neo4jConnection:
         try:
             def run():
                 with self.driver.session(database=self.settings.neo4j_database) as session:
-                    return [dict(record) for record in session.execute_read(
-                        lambda tx: tx.run(query, parameters or {}).data()
-                    )]
+                    @unit_of_work(timeout=self.settings.neo4j_query_timeout_seconds)
+                    def read_transaction(tx):
+                        return [
+                            dict(record)
+                            for record in tx.run(query, parameters or {}).data()
+                        ]
+
+                    return session.execute_read(read_transaction)
             return await asyncio.to_thread(run)
         except (Neo4jError, DriverError) as exc:
             error = exc.code if isinstance(exc, Neo4jError) else type(exc).__name__
@@ -92,9 +97,14 @@ class Neo4jConnection:
         try:
             def run():
                 with self.driver.session(database=self.settings.neo4j_database) as session:
-                    return [dict(record) for record in session.execute_write(
-                        lambda tx: tx.run(query, parameters or {}).data()
-                    )]
+                    @unit_of_work(timeout=self.settings.neo4j_query_timeout_seconds)
+                    def write_transaction(tx):
+                        return [
+                            dict(record)
+                            for record in tx.run(query, parameters or {}).data()
+                        ]
+
+                    return session.execute_write(write_transaction)
             return await asyncio.to_thread(run)
         except (Neo4jError, DriverError) as exc:
             error = exc.code if isinstance(exc, Neo4jError) else type(exc).__name__

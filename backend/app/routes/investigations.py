@@ -14,7 +14,10 @@ router = APIRouter(prefix="/api/investigations", tags=["investigations"])
 
 
 def investigation_service(request: Request) -> InvestigationService:
-    return InvestigationService(request.app.state.neo4j)
+    return InvestigationService(
+        request.app.state.neo4j,
+        request.app.state.settings.max_graph_depth,
+    )
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
@@ -103,6 +106,29 @@ async def get_investigation_timeline(
 ) -> dict:
     timeline = await investigation_service(request).get_timeline(investigation_id)
     return success({"investigation_id": investigation_id, "timeline": timeline})
+
+
+@router.get("/{investigation_id}/attack-paths")
+async def get_investigation_attack_paths(
+    investigation_id: str,
+    request: Request,
+    source_id: str = Query(..., min_length=1, max_length=200),
+    target_id: str = Query(..., min_length=1, max_length=200),
+    depth: int = Query(default=3, ge=1, le=6),
+    limit: int = Query(default=20, ge=1, le=100),
+) -> dict:
+    service = investigation_service(request)
+    try:
+        result = await service.get_attack_paths(
+            investigation_id=investigation_id,
+            source_id=source_id,
+            target_id=target_id,
+            depth=depth,
+            limit=limit,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return success(result)
 
 
 @router.get("/{investigation_id}")

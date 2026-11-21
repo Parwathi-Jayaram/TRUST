@@ -413,10 +413,19 @@ def run_graph_csv_export(
                 )
             )
 
+    trace_status_by_event: dict[str, str] = {}
+    for event_id, event in events.items():
+        status = _event_trace_status(statuses_by_event.get(event_id, []))
+        trace_status_by_event[event_id] = status
+        event["evidence_status"] = status
+        evidence_record = evidence.get(event["evidence_id"])
+        if evidence_record is not None:
+            evidence_record["evidence_status"] = status
+
     trace_relationships: list[dict[str, Any]] = []
     valid_events = sorted(events.values(), key=lambda event: event["event_id"])
     for event in valid_events:
-        status = _event_trace_status(statuses_by_event.get(event["event_id"], []))
+        status = trace_status_by_event[event["event_id"]]
         trace_relationships.append(
             _trace_relationship(event, event["evidence_id"], "SUPPORTED_BY", status)
         )

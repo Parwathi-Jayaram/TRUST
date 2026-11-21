@@ -50,10 +50,12 @@ VITE_API_BASE_URL=https://<render-service>.onrender.com/api
 VITE_API_AUTH_REQUIRED=true
 ```
 
-The Render health check intentionally fails while Neo4j is unavailable. Before
-deploying, confirm `GET /api/health` returns 200 locally with the same database
-URI and credentials. Render and the Neo4j instance must also be able to
-communicate over the configured network.
+Render probes `/healthz`, which checks process liveness only; that check can
+succeed while Neo4j is unavailable. Before relying on database-backed APIs,
+confirm `GET /api/health` returns 200 using the deployment's database settings.
+If it returns 503, the service may have a public URL, but database-backed
+requests are not ready. Render and Neo4j must also be able to communicate over
+the configured network.
 
 ## API groups
 
@@ -71,7 +73,12 @@ bearer token.
 | Incidents | `GET /api/incidents`, `GET /{incident_id}`, `POST /api/incidents`, `PATCH /{incident_id}/status`, `PATCH /{incident_id}/priority`, `GET /{incident_id}/timeline` |
 | Blast radius | `GET /api/blast-radius/{entity_id}`, `POST /api/blast-radius/analyze` |
 | Containment | `POST /api/containment/simulate`, `/compare`, `GET /api/containment/recommendations/{incident_id}` |
-| Investigations | `POST /api/investigations`, `GET /api/investigations`, `GET /{investigation_id}`, `POST /{investigation_id}/notes`, `POST /{investigation_id}/evidence`, `GET /{investigation_id}/evidence`, `PATCH /{investigation_id}/status`, `GET /{investigation_id}/timeline` |
+| Investigations | `POST /api/investigations`, `GET /api/investigations`, `GET /{investigation_id}`, `POST /{investigation_id}/notes`, `POST /{investigation_id}/evidence`, `GET /{investigation_id}/evidence`, `PATCH /{investigation_id}/status`, `GET /{investigation_id}/timeline`, `GET /{investigation_id}/attack-paths?source_id=...&target_id=...&depth=3&limit=20` |
+
+The investigation attack-path endpoint runs the existing bounded graph query
+on demand; both endpoints must be linked to the investigation. It does not
+persist results. Returned directed paths indicate possible graph connectivity,
+not proof that an attacker traversed the path.
 
 Graph list endpoints are paginated. Graph traversal depth is bounded by
 `MAX_GRAPH_DEPTH` (default 4, maximum 6); subgraph and blast-radius queries also

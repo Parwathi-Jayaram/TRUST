@@ -113,9 +113,12 @@ def verify_connectivity() -> bool:
         driver.verify_connectivity()
         return True
     except Exception as exc:
-        # Surface a sanitized message only; credentials are never included.
-        # Catches Neo4j errors as well as DNS/resolution and network errors.
-        print(f"[member2_graph] Neo4j connectivity check failed: {type(exc).__name__}: {exc}")
+        # Exception messages may contain connection details; report only the
+        # class so credentials and URI components are not exposed.
+        print(
+            "[member2_graph] Neo4j connectivity check failed: "
+            f"{type(exc).__name__}"
+        )
         return False
 
 

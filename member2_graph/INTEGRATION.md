@@ -1,5 +1,12 @@
 
 
+> **Current integration:** The FastAPI application under `backend/app` owns
+> the secured graph routes and uses its shared Neo4j connection and graph
+> service. Do not mount another router from the standalone helper examples
+> below. `member2_graph/src/graph_service.py` is a legacy, separate helper;
+> it is not the active backend implementation. See [README.md](README.md) and
+> [HANDOVER.md](HANDOVER.md) for the current routes and verified limitations.
+
 \# TRUSTRAIL AI — Member 2 Graph Intelligence Integration
 
 

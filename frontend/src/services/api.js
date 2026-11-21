@@ -243,6 +243,15 @@ export const api = {
     return normalizeInvestigation(data)
   },
   investigation: async (id) => normalizeInvestigation(await request('/investigations/' + encodeURIComponent(id))),
+  investigationAttackPaths: async (id, sourceId, targetId) => {
+    const query = new URLSearchParams({
+      source_id: sourceId,
+      target_id: targetId,
+    }).toString()
+    return request(
+      '/investigations/' + encodeURIComponent(id) + '/attack-paths?' + query,
+    )
+  },
   addNote: async (id, payload) => normalizeInvestigation(await request('/investigations/' + encodeURIComponent(id) + '/notes', {
     method: 'POST',
     body: JSON.stringify({ content: payload.content || payload.note }),

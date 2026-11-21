@@ -8,6 +8,7 @@ from uuid import uuid4
 from ..database import queries
 from ..database.neo4j_connection import Neo4jConnection
 from ..utils.serialization import serialize_neo4j_value
+from .graph_service import GraphService
 
 
 INVESTIGATION_TRANSITIONS = {
@@ -30,8 +31,9 @@ class InvestigationReferenceNotFound(LookupError):
 
 
 class InvestigationService:
-    def __init__(self, database: Neo4jConnection):
+    def __init__(self, database: Neo4jConnection, max_graph_depth: int = 4):
         self.database = database
+        self.graph = GraphService(database, max_graph_depth)
 
     async def list_investigations(
         self,
@@ -66,6 +68,37 @@ class InvestigationService:
         if not rows or rows[0].get("investigation") is None:
             raise InvestigationNotFound(investigation_id)
         return self._format_investigation(rows[0]["investigation"], include_history=True)
+
+    async def get_attack_paths(
+        self,
+        investigation_id: str,
+        source_id: str,
+        target_id: str,
+        depth: int,
+        limit: int,
+    ) -> dict[str, Any]:
+        investigation = await self.get_investigation(investigation_id)
+        entity_ids = set(investigation.get("entity_ids") or [])
+        if source_id == target_id:
+            raise ValueError("Source and target must be different entities.")
+        if source_id not in entity_ids or target_id not in entity_ids:
+            raise ValueError(
+                "Both path endpoints must be linked to this investigation."
+            )
+
+        result = await self.graph.find_attack_paths(
+            source_id=source_id,
+            target_id=target_id,
+            depth=depth,
+            limit=limit,
+        )
+        return {
+            "investigation_id": investigation_id,
+            **result,
+            "interpretation": (
+                "Potential graph paths are not proof that an attacker traversed them."
+            ),
+        }
 
     async def create_investigation(
         self,
