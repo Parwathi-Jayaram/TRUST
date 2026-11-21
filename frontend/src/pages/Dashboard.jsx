@@ -1,29 +1,63 @@
 import { Activity, AlertTriangle, Boxes, ShieldAlert, Siren } from 'lucide-react'
 import { Background, Controls, ReactFlow } from '@xyflow/react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { StatCard, LoadingState, ErrorState, SeverityBadge } from '../components/Common'
+import { StatCard, LoadingState, ErrorState, ProvenanceBadge, SeverityBadge } from '../components/Common'
 import EntityNode from '../components/EntityNode'
 import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
 import { createGraphLayout } from '../utils/graphLayout'
+import { selectGraphEntity } from '../utils/integrationData'
 
 const nodeTypes = { entity: EntityNode }
 
 function ConnectivityPreview() {
   const navigate = useNavigate()
-  const graph = useApi(() => api.graphSubgraph('HOST-001', 2))
-  const layout = useMemo(() => createGraphLayout(graph.data?.nodes, graph.data?.edges, 'HOST-001'), [graph.data])
+  const entityList = useApi(() => api.graphEntities({ limit: 200 }))
+  const [selectedEntityId, setSelectedEntityId] = useState('')
+  const entityOptions = entityList.data?.items || []
+  const selectedEntity = selectGraphEntity(entityOptions, selectedEntityId)
+  const entityId = selectedEntity?.id === undefined ? '' : String(selectedEntity.id)
+  const graph = useApi(
+    () => entityId ? api.graphSubgraph(entityId, 2) : Promise.resolve(null),
+    [entityId],
+  )
+  const layout = useMemo(
+    () => createGraphLayout(graph.data?.nodes, graph.data?.edges, entityId),
+    [graph.data, entityId],
+  )
+  const provenance = graph.data?.root?.is_synthetic ?? selectedEntity?.is_synthetic
+  const entityName = selectedEntity?.name || entityId
 
   return (
     <section className="panel overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-5 py-4">
-        <div><h2 className="text-sm font-semibold">Asset connectivity</h2><p className="mt-1 text-xs text-slate-500">A two-hop sample neighborhood around WS-FIN-01</p></div>
-        <button className="secondary-button h-8" onClick={() => navigate('/attack-graph?entityId=HOST-001')}>Explore full graph</button>
+        <div><h2 className="text-sm font-semibold">Asset connectivity</h2><p className="mt-1 text-xs text-slate-500">Two-hop neighborhood around {entityName || 'a selected entity'}</p></div>
+        <div className="flex items-center gap-2">
+          {!entityList.loading && !entityList.error && entityOptions.length > 0 && (
+            <label>
+              <span className="sr-only">Select graph entity</span>
+              <select
+                className="field h-8 max-w-56"
+                value={entityId}
+                onChange={(event) => setSelectedEntityId(event.target.value)}
+              >
+                {entityOptions.map((entity) => (
+                  <option key={entity.id} value={entity.id}>{entity.name || entity.id}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          {entityId && <button className="secondary-button h-8" onClick={() => navigate(`/attack-graph?entityId=${encodeURIComponent(entityId)}`)}>Explore full graph</button>}
+        </div>
       </div>
-      {graph.loading ? <div className="grid h-[330px] place-items-center text-sm text-slate-500">Loading graph preview...</div> : graph.error ? (
-        <div className="grid h-[330px] place-items-center p-5 text-center text-sm text-red-300">Connectivity preview unavailable: {graph.error.message}</div>
+      {entityList.loading ? <div className="grid h-[330px] place-items-center text-sm text-slate-500">Loading graph entities...</div> : entityList.error ? (
+        <div className="p-5"><ErrorState error={entityList.error} onRetry={entityList.reload} /></div>
+      ) : !entityOptions.length ? (
+        <div className="grid h-[330px] place-items-center text-sm text-slate-500">No graph entities are available.</div>
+      ) : graph.loading ? <div className="grid h-[330px] place-items-center text-sm text-slate-500">Loading graph preview...</div> : graph.error ? (
+        <div className="p-5"><ErrorState error={graph.error} onRetry={graph.reload} /></div>
       ) : layout.nodes.length ? (
         <>
           <div className="h-[330px]">
@@ -45,10 +79,10 @@ function ConnectivityPreview() {
           </div>
           <div className="flex items-center justify-between border-t border-slate-800 px-5 py-2 text-[10px] text-slate-500">
             <span>{layout.nodes.length} entities · {layout.edges.length} relationships</span>
-            <span>Sample data · click an entity to explore</span>
+            <span className="flex items-center gap-2"><ProvenanceBadge isSynthetic={provenance} /> Click an entity to explore</span>
           </div>
         </>
-      ) : <div className="grid h-[330px] place-items-center text-sm text-slate-500">No connectivity data available</div>}
+      ) : <div className="grid h-[330px] place-items-center text-sm text-slate-500">No connectivity data is available for this entity.</div>}
     </section>
   )
 }
@@ -64,18 +98,35 @@ export default function Dashboard() {
   const o = overview.data || {}
   const severityData = Object.entries(distribution.data?.by_severity || {}).map(([name, value]) => ({ name, value }))
   const events = activity.data?.items || []
+  const syntheticActivityCount = events.filter((item) => item.is_synthetic === true).length
+  const syntheticDistributionNotice = (distribution.data?.limitations || []).some((limit) =>
+    String(limit).toLowerCase().includes('synthetic'),
+  )
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-xl font-semibold">SOC Command Center</h1>
-        <p className="mt-1 text-sm text-slate-500">Current security posture overview</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">SOC Command Center</h1>
+          <p className="mt-1 text-sm text-slate-500">Current security posture overview</p>
+        </div>
+        {(syntheticActivityCount > 0 || syntheticDistributionNotice) && (
+          <div className="rounded-lg border border-amber-400/20 bg-amber-400/[0.06] px-3 py-2">
+            <div className="flex items-center gap-2">
+              <ProvenanceBadge isSynthetic={true} />
+              <span className="text-xs text-amber-100">Demo dataset context</span>
+            </div>
+            <p className="mt-1 max-w-sm text-[10px] leading-4 text-slate-400">
+              Synthetic records and model signals are investigative demonstrations, not confirmed real-world incidents.
+            </p>
+          </div>
+        )}
       </div>
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Monitored assets" value={o.total_monitored_entities} icon={Boxes} />
-        <StatCard label="Active threats" value={o.detected_threats} icon={ShieldAlert} tone="amber" />
-        <StatCard label="Critical incidents" value={o.critical_alerts} icon={Siren} tone="red" />
-        <StatCard label="High-risk entities" value={o.high_risk_entities} icon={AlertTriangle} tone="violet" />
+        <StatCard label="Detections" value={o.detected_threats} icon={ShieldAlert} tone="amber" detail={o.unavailable_metrics?.detected_threats} />
+        <StatCard label="Active incidents" value={o.active_incidents} icon={Siren} tone="red" />
+        <StatCard label="High-risk entities" value={o.high_risk_entities} icon={AlertTriangle} tone="violet" detail={o.unavailable_metrics?.high_risk_entities} />
         <StatCard label="Investigations" value={o.current_investigation_count} icon={Activity} tone="cyan" />
       </section>
 
@@ -101,6 +152,11 @@ export default function Dashboard() {
               </ResponsiveContainer>
             ) : <div className="grid h-full place-items-center text-sm text-slate-500">No severity data</div>}
           </div>
+          {distribution.data?.limitations?.length > 0 && (
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Member 4 signals are investigative leads, not proof of compromise. {distribution.data.limitations.join(' ')}
+            </p>
+          )}
         </div>
 
         <div className="panel p-5">
@@ -116,9 +172,14 @@ export default function Dashboard() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <span className="truncate text-sm">{item.description || item.title}</span>
-                    <SeverityBadge severity={item.severity} />
+                    {item.activity_type === 'investigation'
+                      ? <span className="badge bg-cyan-400/10 text-cyan-200 ring-cyan-400/20">Investigation · {item.status || 'status unavailable'}</span>
+                      : <SeverityBadge severity={item.severity} />}
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">{item.timestamp || item.event_time || 'Timestamp unavailable'}</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span>{item.timestamp || item.event_time || 'Timestamp unavailable'}</span>
+                    <ProvenanceBadge isSynthetic={item.is_synthetic} />
+                  </div>
                 </div>
               </div>
             )) : <div className="py-10 text-center text-sm text-slate-500">No recent activity</div>}

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { ClipboardList, Plus } from 'lucide-react'
-import { ErrorState, LoadingState, SeverityBadge } from '../components/Common'
+import { ErrorState, LoadingState, ProvenanceBadge, SeverityBadge } from '../components/Common'
 import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
 
@@ -66,14 +66,18 @@ export default function Investigations() {
         <div className="panel overflow-hidden">
           {items.length ? items.map((item) => (
             <button key={item.id} onClick={() => selectInvestigation(item.id)} className={`w-full border-b border-slate-800 px-4 py-4 text-left hover:bg-slate-800/40 ${selectedId === item.id ? 'bg-cyan-400/[0.04]' : ''}`}>
-              <div className="font-medium">{item.title || item.id}</div><div className="mt-1 text-xs text-slate-500">{item.status} • {item.updated_at || '—'}</div>
+              <div className="font-medium">{item.title || item.id}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>{item.status} • {item.updated_at || '—'}</span>
+                <ProvenanceBadge isSynthetic={item.is_synthetic} />
+              </div>
             </button>
           )) : <div className="py-16 text-center text-sm text-slate-500">No investigations found</div>}
         </div>
         <div className="panel p-5">
           {!selectedId ? <div className="grid h-64 place-items-center text-sm text-slate-500">Open an investigation to review evidence</div> : selected.loading ? <LoadingState /> : selected.error ? <ErrorState error={selected.error} /> : (
             <div>
-              <div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2><div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div></div><SeverityBadge severity={selected.data?.status} /></div>
+              <div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2><div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div><div className="mt-2"><ProvenanceBadge isSynthetic={selected.data?.is_synthetic} /></div></div><SeverityBadge severity={selected.data?.status} /></div>
               <div className="mt-5">
                 <h3 className="text-sm font-semibold">Findings</h3>
                 <p className="mt-2 rounded-lg bg-soc-950 p-3 text-sm leading-6 text-slate-300">{selected.data?.findings || 'No findings recorded.'}</p>

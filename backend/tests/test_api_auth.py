@@ -15,6 +15,7 @@ class AuthDatabase:
             "users": 0,
             "servers": 0,
             "active_incidents": 0,
+            "current_investigation_count": 0,
         }]
 
     async def health(self):

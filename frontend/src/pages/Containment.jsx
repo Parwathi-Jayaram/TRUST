@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FlaskConical, Play } from 'lucide-react'
 import { ErrorState, LoadingState } from '../components/Common'
 import { api } from '../services/api'
@@ -12,12 +12,18 @@ const actions = [
 ]
 
 export default function Containment() {
-  const [entityId, setEntityId] = useState('HOST-001')
+  const [entityId, setEntityId] = useState('')
   const [selected, setSelected] = useState(['isolate_host'])
   const [result, setResult] = useState(null)
   const [running, setRunning] = useState(false)
   const [runError, setRunError] = useState(null)
   const incidents = useApi(api.incidents)
+  const entityList = useApi(() => api.graphEntities({ limit: 200 }))
+  const entityOptions = entityList.data?.items || []
+
+  useEffect(() => {
+    if (!entityId && entityOptions.length) setEntityId(String(entityOptions[0].id))
+  }, [entityOptions, entityId])
 
   async function runSimulation() {
     setRunning(true)
@@ -44,7 +50,19 @@ export default function Containment() {
         <aside className="panel p-4">
           <h2 className="font-semibold">Simulation setup</h2>
           <label className="mt-4 block text-xs font-semibold uppercase tracking-wider text-slate-500">Source entity</label>
-          <input className="field mt-2 w-full" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
+          {entityList.loading ? (
+            <div className="mt-2 text-xs text-slate-500">Loading graph entities...</div>
+          ) : entityList.error ? (
+            <div className="mt-2"><ErrorState error={entityList.error} onRetry={entityList.reload} /></div>
+          ) : !entityOptions.length ? (
+            <div className="mt-2 text-xs text-slate-500">No graph entities are available.</div>
+          ) : (
+            <select className="field mt-2 w-full" value={entityId} onChange={(event) => setEntityId(event.target.value)}>
+              {entityOptions.map((entity) => (
+                <option key={entity.id} value={entity.id}>{entity.name || entity.id} · {entity.id}</option>
+              ))}
+            </select>
+          )}
           <label className="mt-5 block text-xs font-semibold uppercase tracking-wider text-slate-500">Containment actions</label>
           <div className="mt-2 space-y-2">
             {actions.map((action) => (
@@ -54,7 +72,7 @@ export default function Containment() {
               </label>
             ))}
           </div>
-          <button className="primary-button mt-5 w-full" onClick={runSimulation} disabled={running || !selected.length}>
+          <button className="primary-button mt-5 w-full" onClick={runSimulation} disabled={running || !selected.length || !entityId}>
             <Play size={15} />{running ? 'Running...' : 'Run simulation'}
           </button>
           {incidents.loading ? null : <div className="mt-4 rounded-lg bg-slate-900 p-3 text-xs text-slate-500">Target incident: {incidents.data?.items?.[0]?.id || 'Not required'}</div>}

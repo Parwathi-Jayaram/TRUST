@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, ArrowUpRight, ChevronRight, Clock3, FileSearch, LockKeyhole } from 'lucide-react'
-import { ErrorState, LoadingState, SeverityBadge } from '../components/Common'
+import { ErrorState, LoadingState, ProvenanceBadge, SeverityBadge } from '../components/Common'
 import { usePersona } from '../context/PersonaContext'
 import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
@@ -55,7 +55,10 @@ export default function Incidents() {
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-orange-400/10 text-orange-300"><AlertTriangle size={17} /></span>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{incident.title || incident.id}</span><SeverityBadge severity={incident.severity} /></span>
-                <span className="mt-1 block text-xs text-slate-500">{incident.id} · {incident.status} · {incident.updated_at || incident.detection_time || 'Time unavailable'}</span>
+                <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span>{incident.id} · {incident.status} · {incident.updated_at || incident.detection_time || 'Time unavailable'}</span>
+                  <ProvenanceBadge isSynthetic={incident.is_synthetic} />
+                </span>
               </span>
               <ChevronRight size={16} className="shrink-0 text-slate-600" />
             </button>
@@ -68,6 +71,10 @@ export default function Incidents() {
               <div className="flex items-start justify-between gap-3">
                 <div><h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2><div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div></div>
                 <SeverityBadge severity={selected.data?.severity} />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>Incident provenance</span><ProvenanceBadge isSynthetic={selected.data?.is_synthetic} />
+                {relatedThreat.data && <><span>Related event</span><ProvenanceBadge isSynthetic={relatedThreat.data.is_synthetic} /></>}
               </div>
 
               <div className="explanation-card mt-4">

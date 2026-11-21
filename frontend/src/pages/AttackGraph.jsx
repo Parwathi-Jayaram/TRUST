@@ -3,7 +3,7 @@ import { Background, Controls, MiniMap, ReactFlow, useEdgesState, useNodesState 
 import { useSearchParams } from 'react-router-dom'
 import { AlertCircle, ArrowDownRight, Info, RotateCcw, Search } from 'lucide-react'
 import EntityNode from '../components/EntityNode'
-import { ErrorState, LoadingState, SeverityBadge } from '../components/Common'
+import { ErrorState, LoadingState, ProvenanceBadge, SeverityBadge } from '../components/Common'
 import { usePersona } from '../context/PersonaContext'
 import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
@@ -51,15 +51,27 @@ function getRelationshipExplanation(edge, source, target, persona) {
 
 export default function AttackGraph() {
   const [searchParams, setSearchParams] = useSearchParams()
-  const [entityId, setEntityId] = useState(() => searchParams.get('entityId') || 'HOST-001')
+  const [entityId, setEntityId] = useState(() => searchParams.get('entityId') || '')
   const [depth, setDepth] = useState(2)
   const [typeFilter, setTypeFilter] = useState('all')
   const [selectedElement, setSelectedElement] = useState(null)
   const [selectedEventId, setSelectedEventId] = useState(null)
+  const [pathTargetId, setPathTargetId] = useState('')
+  const [pathQuery, setPathQuery] = useState(null)
   const { persona } = usePersona()
   const entityList = useApi(api.graphEntities)
-  const graph = useApi(() => api.graphSubgraph(entityId, depth), [entityId, depth])
+  const entityOptions = entityList.data?.items || []
+  const graph = useApi(
+    () => entityId ? api.graphSubgraph(entityId, depth) : Promise.resolve(null),
+    [entityId, depth],
+  )
   const threats = useApi(api.threats)
+  const attackPaths = useApi(
+    () => pathQuery
+      ? api.attackPaths(pathQuery.sourceId, pathQuery.targetId, pathQuery.depth)
+      : Promise.resolve(null),
+    [pathQuery],
+  )
   const eventDetail = useApi(
     () => selectedEventId ? api.threat(selectedEventId) : Promise.resolve(null),
     [selectedEventId],
@@ -69,9 +81,31 @@ export default function AttackGraph() {
   const [flowInstance, setFlowInstance] = useState(null)
 
   useEffect(() => {
+    if (!entityOptions.length) return
+    const sourceExists = entityOptions.some((entity) => String(entity.id) === String(entityId))
+    if (!sourceExists) {
+      const nextId = String(entityOptions[0].id)
+      setEntityId(nextId)
+      setSearchParams({ entityId: nextId })
+    }
+  }, [entityOptions, entityId, setSearchParams])
+
+  useEffect(() => {
+    if (!entityId || !entityOptions.length) return
+    const targetExists = entityOptions.some((entity) => String(entity.id) === String(pathTargetId))
+    if (!targetExists || pathTargetId === entityId) {
+      const nextTarget = entityOptions.find((entity) => String(entity.id) !== String(entityId))
+      setPathTargetId(nextTarget ? String(nextTarget.id) : '')
+    }
+  }, [entityOptions, entityId, pathTargetId])
+
+  useEffect(() => {
     const queryEntity = searchParams.get('entityId')
-    if (queryEntity && queryEntity !== entityId) setEntityId(queryEntity)
-  }, [searchParams, entityId])
+    if (queryEntity && queryEntity !== entityId
+      && entityOptions.some((entity) => String(entity.id) === queryEntity)) {
+      setEntityId(queryEntity)
+    }
+  }, [searchParams, entityId, entityOptions])
 
   useEffect(() => {
     if (!graph.data) return
@@ -115,13 +149,15 @@ export default function AttackGraph() {
     const nextId = event.target.value
     setEntityId(nextId)
     setSearchParams({ entityId: nextId })
+    setPathQuery(null)
   }
 
-  if (graph.loading || entityList.loading) return <LoadingState label="Loading graph neighborhood..." />
+  if (entityList.loading || (entityId && graph.loading)) return <LoadingState label="Loading graph neighborhood..." />
   if (entityList.error) return <ErrorState error={entityList.error} onRetry={entityList.reload} />
+  if (!entityOptions.length) return <div className="panel p-6 text-sm text-slate-400">No graph entities are available.</div>
+  if (!entityId) return <LoadingState label="Selecting graph entity..." />
   if (graph.error) return <ErrorState error={graph.error} onRetry={graph.reload} />
 
-  const entityOptions = entityList.data?.items || []
   const selectedNode = selectedElement?.kind === 'node' ? selectedElement.item : null
   const selectedEdge = selectedElement?.kind === 'edge' ? selectedElement.item : null
   const selectedNodeEdges = selectedNode
@@ -130,6 +166,12 @@ export default function AttackGraph() {
   const edgeSource = selectedEdge && nodes.find((node) => node.id === selectedEdge.source)
   const edgeTarget = selectedEdge && nodes.find((node) => node.id === selectedEdge.target)
   const availableTypes = [...new Set(entityOptions.map((item) => item.type).filter(Boolean))].sort()
+  const graphRoot = graph.data?.root || entityOptions.find((entity) => String(entity.id) === String(entityId))
+  const graphProvenance = graphRoot?.is_synthetic ?? graphRoot?.properties?.is_synthetic
+
+  function findPaths() {
+    setPathQuery({ sourceId: entityId, targetId: pathTargetId, depth: Math.min(depth, 3) })
+  }
 
   return (
     <div className="space-y-4">
@@ -162,7 +204,7 @@ export default function AttackGraph() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-slate-400">
           <span className="inline-flex items-center gap-1.5"><Info size={13} className="text-cyan-400" />Click a node or link for an explanation</span>
           <span>{nodes.length} entities</span><span>{edges.length} relationships</span>
-          <span className="text-amber-300/80">Demonstration data</span>
+          <ProvenanceBadge isSynthetic={graphProvenance} />
         </div>
         <button className="secondary-button h-8 gap-2" onClick={() => { setSelectedElement(null); setSelectedEventId(null) }}>
           <RotateCcw size={13} /> Clear selection
@@ -282,6 +324,81 @@ export default function AttackGraph() {
           )}
         </aside>
       </div>
+
+      <section className="panel p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Potential attack paths</h2>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+              Directed paths through modeled graph relationships from the selected source to a target.
+              A modeled path is an investigation lead, not proof that an attack occurred or an entity was compromised.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded border border-slate-700 px-3 py-2 text-xs text-slate-300">
+              From: {entityOptions.find((entity) => String(entity.id) === String(entityId))?.name || entityId}
+            </span>
+            <label>
+              <span className="sr-only">Attack path target</span>
+              <select
+                className="field w-56"
+                value={pathTargetId}
+                onChange={(event) => {
+                  setPathTargetId(event.target.value)
+                  setPathQuery(null)
+                }}
+              >
+                {entityOptions.filter((entity) => String(entity.id) !== String(entityId)).map((entity) => (
+                  <option key={entity.id} value={entity.id}>{entity.name || entity.id} · {entity.id}</option>
+                ))}
+              </select>
+            </label>
+            <button
+              className="primary-button"
+              type="button"
+              onClick={findPaths}
+              disabled={!pathTargetId || attackPaths.loading}
+            >
+              {attackPaths.loading ? 'Searching...' : 'Find paths'}
+            </button>
+          </div>
+        </div>
+        {attackPaths.error && (
+          <div className="mt-4"><ErrorState error={attackPaths.error} onRetry={attackPaths.reload} /></div>
+        )}
+        {pathQuery && !attackPaths.loading && !attackPaths.error && attackPaths.data && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs text-slate-400">
+              {attackPaths.data.total_paths
+                ? `${attackPaths.data.total_paths} modeled path${attackPaths.data.total_paths === 1 ? '' : 's'} found within ${attackPaths.data.max_depth} hops.`
+                : 'No directed path was found between these entities within the selected depth.'}
+            </p>
+            {attackPaths.data.paths.map((path, pathIndex) => (
+              <div key={`${path.depth}-${pathIndex}`} className="rounded-lg border border-slate-800 bg-soc-950/60 p-3">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                  Potential path {pathIndex + 1} · {path.depth} hop{path.depth === 1 ? '' : 's'}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {path.nodes.map((node, nodeIndex) => (
+                    <span key={`${node.id}-${nodeIndex}`} className="inline-flex flex-wrap items-center gap-2">
+                      <span className="rounded border border-slate-800 px-2 py-1 text-xs text-slate-200">
+                        {node.name || node.type || node.id}
+                        <span className="ml-1 text-[10px] text-slate-500">({node.id})</span>
+                        <span className="ml-2"><ProvenanceBadge isSynthetic={node.is_synthetic ?? node.properties?.is_synthetic} /></span>
+                      </span>
+                      {path.relationships[nodeIndex] && (
+                        <span className="text-xs text-cyan-300">
+                          —{path.relationships[nodeIndex].type || 'RELATED_TO'}→
+                        </span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   )
 }

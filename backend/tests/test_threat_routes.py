@@ -137,3 +137,11 @@ class ThreatRouteTests(unittest.TestCase):
         response = self.client.get("/api/threats/EVT-002")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_missing_synthetic_metadata_is_not_assumed_to_be_real(self) -> None:
+        self.database.events["EVT-001"].pop("is_synthetic")
+
+        response = self.client.get("/api/threats/EVT-001")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["data"]["is_synthetic"])

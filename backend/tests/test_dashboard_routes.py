@@ -15,6 +15,7 @@ class DashboardDatabase:
             "users": 3,
             "servers": 3,
             "active_incidents": 1,
+            "current_investigation_count": 4,
         }
         self.events = [{
             "event_id": "EVT-001",
@@ -42,7 +43,13 @@ class DashboardDatabase:
                 },
             }]
         if "investigation_id" in query:
-            return []
+            return [{
+                "investigation_id": "INV-001",
+                "title": "Review synthetic event",
+                "status": "OPEN",
+                "updated_at": "2026-11-20T12:00:00Z",
+                "is_synthetic": True,
+            }]
         return self.events
 
     async def health(self):
@@ -93,6 +100,9 @@ class DashboardRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["counts"]["total_monitored_entities"], 18)
+        self.assertEqual(data["counts"]["active_incidents"], 1)
+        self.assertEqual(data["counts"]["current_investigation_count"], 4)
+        self.assertNotIn("current_investigation_count", data["unavailable_metrics"])
         self.assertIsNone(data["counts"]["detected_threats"])
         self.assertIn("detected_threats", data["unavailable_metrics"])
 
@@ -116,8 +126,11 @@ class DashboardRouteTests(unittest.TestCase):
         event = response.json()["data"]["events"][0]
         self.assertEqual(event["event_id"], "EVT-001")
         self.assertEqual(event["event_time"], "2026-11-20T00:00:00+00:00")
-        self.assertEqual(response.json()["data"]["investigations"], [])
+        investigations = response.json()["data"]["investigations"]
+        self.assertEqual(investigations[0]["investigation_id"], "INV-001")
+        self.assertTrue(investigations[0]["is_synthetic"])
         self.assertTrue(response.json()["data"]["investigation_activity_available"])
+        self.assertTrue(event["is_synthetic"])
         self.assertEqual(self.database.calls[-1][1], {"limit": 1})
 
         invalid_limit = self.client.get("/api/dashboard/recent-activity?limit=101")
