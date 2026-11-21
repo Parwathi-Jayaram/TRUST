@@ -80,3 +80,27 @@ Output records are deterministic for the same dataset ID, source record IDs, and
 $env:PYTHONPATH = "src"
 python -m unittest discover -s tests -v
 ```
+
+## TRUSTRAIL SOC frontend (Phase 2)
+
+The React dashboard consumes the FastAPI `/api` contracts defined in `backend/app/main.py`.
+The included demo API reads the repository's synthetic graph fixture; it does not contain
+real telemetry or execute containment actions.
+
+Install and start the frontend:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+In another terminal, start the demo API:
+
+```powershell
+python -m pip install -r backend\requirements.txt
+python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Open `http://localhost:5173`. FastAPI documentation is available at
+`http://127.0.0.1:8000/docs`.
