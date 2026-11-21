@@ -60,12 +60,10 @@ async def update_incident_status(
     body: UpdateIncidentStatusRequest,
     request: Request,
 ) -> dict:
-    incident = await incident_service(request).update_status(
-        incident_id=incident_id,
-        new_status=body.status.value,
-        note=body.note,
+    raise HTTPException(
+        status_code=503,
+        detail="Incident status updates are disabled until authentication and authorization are configured.",
     )
-    return success(incident, "Incident status updated")
 
 
 @router.patch("/{incident_id}/priority")

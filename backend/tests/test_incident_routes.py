@@ -1,4 +1,3 @@
-import json
 import unittest
 
 from fastapi.testclient import TestClient
@@ -74,7 +73,7 @@ class IncidentRouteTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.client_context.__exit__(None, None, None)
 
-    def test_create_update_and_timeline_are_audited(self) -> None:
+    def test_status_updates_are_disabled_and_priority_updates_are_audited(self) -> None:
         created = self.client.post("/api/incidents", json={
             "title": "Investigate suspicious activity",
             "event_id": "EVT-001",
@@ -91,8 +90,8 @@ class IncidentRouteTests(unittest.TestCase):
             f"/api/incidents/{incident_id}/status",
             json={"status": "INVESTIGATING", "note": "Analyst review started."},
         )
-        self.assertEqual(updated.status_code, 200)
-        self.assertEqual(updated.json()["data"]["status"], "INVESTIGATING")
+        self.assertEqual(updated.status_code, 503)
+        self.assertEqual(self.database.incidents[incident_id]["status"], "NEW")
 
         priority = self.client.patch(
             f"/api/incidents/{incident_id}/priority",
@@ -103,16 +102,11 @@ class IncidentRouteTests(unittest.TestCase):
 
         timeline = self.client.get(f"/api/incidents/{incident_id}/timeline")
         entries = timeline.json()["data"]["timeline"]
-        self.assertEqual([entry["action"] for entry in entries], [
-            "created",
-            "status_changed",
-            "priority_changed",
-        ])
-        self.assertEqual(entries[1]["note"], "Analyst review started.")
+        self.assertEqual([entry["action"] for entry in entries], ["created", "priority_changed"])
         stored_entries = self.database.incidents[incident_id]["status_history"]
-        self.assertTrue(all(isinstance(json.loads(entry), dict) for entry in stored_entries))
+        self.assertEqual(len(stored_entries), 2)
 
-    def test_invalid_status_transition_is_rejected(self) -> None:
+    def test_status_updates_are_disabled_for_valid_transitions(self) -> None:
         created = self.client.post("/api/incidents", json={
             "title": "Incident",
             "priority": "medium",
@@ -124,26 +118,21 @@ class IncidentRouteTests(unittest.TestCase):
             json={"status": "RESOLVED"},
         )
 
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 503)
 
-    def test_existing_incident_without_status_must_be_explicitly_initialized(self) -> None:
+    def test_status_updates_are_disabled_for_existing_legacy_incidents(self) -> None:
         self.database.incidents["INC-LEGACY"] = {
             "id": "INC-LEGACY",
             "type": "Incident",
             "priority": "medium",
         }
 
-        rejected = self.client.patch(
+        response = self.client.patch(
             "/api/incidents/INC-LEGACY/status",
             json={"status": "INVESTIGATING"},
         )
-        initialized = self.client.patch(
-            "/api/incidents/INC-LEGACY/status",
-            json={"status": "NEW"},
-        )
-
-        self.assertEqual(rejected.status_code, 409)
-        self.assertEqual(initialized.status_code, 200)
+        self.assertEqual(response.status_code, 503)
+        self.assertNotIn("status", self.database.incidents["INC-LEGACY"])
 
     def test_missing_related_event_and_missing_incident_return_404(self) -> None:
         create_response = self.client.post("/api/incidents", json={

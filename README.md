@@ -103,3 +103,19 @@ at `http://127.0.0.1:8000/api/health`. Neo4j-backed endpoints return an explicit
 service-unavailable response until database credentials are configured.
 See [docs/backend_api.md](docs/backend_api.md) for routes, data limitations,
 and test commands.
+
+## Phase 2 frontend
+
+The React/Vite SOC prototype uses the `/api` endpoints from the modular backend.
+Configure Neo4j as described above, then start the frontend in a second terminal:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173`. The UI uses synthetic/demo-oriented labels and is
+not a source of production telemetry. Persona views affect presentation only;
+they are not access controls. Incident status changes remain disabled until
+authentication and server-side authorization are implemented.
