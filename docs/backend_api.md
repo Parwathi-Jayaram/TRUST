@@ -80,6 +80,68 @@ on demand; both endpoints must be linked to the investigation. It does not
 persist results. Returned directed paths indicate possible graph connectivity,
 not proof that an attacker traversed the path.
 
+## Threat analysis integration
+
+The backend is the only application orchestration/API layer. `create_app()`
+creates one `Member4DetectionEngine` and exposes it through `app.state`.
+`GET /api/threats` and `GET /api/threats/{threat_id}` use
+`ThreatService.list_threats()` and `ThreatService.get_threat()`, respectively.
+Those functions read `GraphNode:SecurityEvent` properties from Neo4j and call
+`Member4DetectionEngine.predict_events()`. The evidence and associated-entity
+endpoints call `get_threat()` first, so they also run inference before
+retrieving linked graph records. `DashboardService.get_threat_distribution()`
+uses the same detection-engine interface for a bounded event page.
+
+`Member4DetectionEngine` loads the existing model and preprocessor from
+`member4_ml/models`, calls Member 4's `predict_batch()` and
+`compute_investigation_priority()`, and returns both model confidence and
+investigation priority. It adapts the normalized event's optional `attributes`
+object to the `attr_*` feature columns expected by the existing model. It does
+not modify the stored event or introduce a second scoring formula. The
+standalone API in `member4_ml/src/api.py` is not the backend's runtime path.
+
+The analysis input is a `SecurityEvent` property map. `event_id` must be a
+nonempty string; `attributes`, when present, must be an object of scalar
+values. Common normalized properties include `event_type`, `event_time`,
+`severity`, `description`, `evidence_id`, `evidence_status`, `is_synthetic`,
+`source_entity_id`, `target_entity_id`, and optional `attributes`. Missing
+feature values are handled by Member 4's existing preprocessor. Malformed
+event identifiers or attributes return an explicit gateway error rather than
+being silently dropped.
+
+Threat results retain the event/evidence references (`event_id`,
+`threat_id`, `evidence_id`, `entity_id`) and include the model
+`prediction`, `attack_category`, `model_name`, `model_version`, `confidence`,
+`model_confidence_percent`, `top_features`, and `explanation`. The separate
+`risk_score`, `risk_level`, and `investigation_priority` fields are produced
+by Member 4's deterministic scorer; the score is an investigation-priority
+score, not model confidence or proof of compromise. `is_synthetic`,
+`source_evidence_status`, and `limitations` preserve source provenance and
+uncertainty. `evidence_status` is Member 4's `model_generated_signal` status;
+it is not the source event's observed/derived/unconfirmed evidence status.
+`GET /api/threats/evidence/{threat_id}` returns the linked Evidence records
+when present.
+
+Threat analysis response states:
+
+| Condition | HTTP behavior |
+|---|---|
+| Event page has no records | `200`, empty `threats` list |
+| Requested event is absent, or its prediction is not suspicious | `404` |
+| Invalid pagination or other query parameters | `422` |
+| Neo4j is unavailable | `503` |
+| Member 4 model artifacts/dependencies are unavailable | `503` |
+| Member 4 inference fails or Neo4j returns a malformed event | `502` |
+
+Threat endpoints run only the existing local Member 4 model over Neo4j events.
+No external threat-intelligence provider is implemented, so an empty threat
+result is not an external reputation lookup or proof that an indicator is
+safe. The committed graph fixture contains only synthetic data: it has
+synthetic IP entity values and one simulated CVE-like entity, but no domains,
+hashes, or populated network-flow `attributes`. No external provider is
+recommended from those placeholder indicators, and no live Neo4j contents
+were queried.
+
 Graph list endpoints are paginated. Graph traversal depth is bounded by
 `MAX_GRAPH_DEPTH` (default 4, maximum 6); subgraph and blast-radius queries also
 cap returned paths. The implementation uses the existing `GraphNode`, `Entity`,
@@ -95,6 +157,8 @@ relationship conventions.
   is an analyst signal, not proof of compromise.
 - `model_confidence` and the Member 4 investigation-priority `risk_score` are
   distinct. Graph context is not yet incorporated into that priority score.
+- External threat-intelligence APIs (including AbuseIPDB, OTX, NVD, CISA KEV,
+  OSV, and Wazuh) are not implemented or queried.
 - The current entity contract has no confirmed compromise or `risk_level`
   property. Blast-radius results are therefore labeled potential exposure;
   risk-level filtering reports unavailable when no such properties exist.

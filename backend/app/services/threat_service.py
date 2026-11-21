@@ -8,6 +8,10 @@ from ..utils.serialization import serialize_neo4j_value
 from .member4_detection import Member4DetectionEngine, is_suspicious_prediction
 
 
+class ThreatEventDataError(RuntimeError):
+    pass
+
+
 class ThreatService:
     def __init__(
         self,
@@ -16,6 +20,23 @@ class ThreatService:
     ):
         self.database = database
         self.detection_engine = detection_engine
+
+    @staticmethod
+    def _validated_event(value: Any) -> dict[str, Any]:
+        event = serialize_neo4j_value(value)
+        if not isinstance(event, dict):
+            raise ThreatEventDataError("Neo4j returned a malformed security event.")
+        event_id = event.get("event_id")
+        if not isinstance(event_id, str) or not event_id.strip():
+            raise ThreatEventDataError(
+                "Neo4j returned a security event without a valid event_id."
+            )
+        attributes = event.get("attributes")
+        if attributes is not None and not isinstance(attributes, dict):
+            raise ThreatEventDataError(
+                "Neo4j returned a security event with malformed attributes."
+            )
+        return event
 
     async def list_threats(
         self,
@@ -28,7 +49,7 @@ class ThreatService:
             parameters={"skip": skip, "limit": limit},
         )
         events = [
-            serialize_neo4j_value(row["event"])
+            self._validated_event(row["event"])
             for row in rows
             if row.get("event") is not None
         ]
@@ -57,7 +78,7 @@ class ThreatService:
         if not rows or rows[0].get("event") is None:
             return None
 
-        event = serialize_neo4j_value(rows[0]["event"])
+        event = self._validated_event(rows[0]["event"])
         predictions = await self.detection_engine.predict_events([event])
         prediction = predictions[0]
         if not is_suspicious_prediction(prediction.get("prediction")):
@@ -124,6 +145,7 @@ class ThreatService:
             ),
             "investigation_priority": prediction.get("investigation_priority"),
             "evidence_status": prediction.get("evidence_status"),
+            "source_evidence_status": event.get("evidence_status"),
             "is_synthetic": event.get("is_synthetic", False),
             "limitations": prediction.get("limitations", []),
         }

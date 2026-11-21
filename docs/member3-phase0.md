@@ -146,6 +146,30 @@ The authorized synthetic fixture has been exported locally. Its 18 entities, 17 
 - Required versus optional telemetry, timestamp semantics, synthetic-data policy, and provenance rules are accepted.
 - No real dataset has been downloaded or validated; synthetic fixture results are not evidence of real-world detection performance.
 
+## 8. Threat analysis integration audit (2026-11-22)
+
+No external threat-intelligence API client is implemented in the application.
+AbuseIPDB, AlienVault OTX, NVD, CISA KEV, OSV, and Wazuh are not called by
+the backend. CISA KEV and NVD remain documented as possible future sources,
+not active integrations. There are no provider request/response contracts,
+provider credentials in application settings, provider caches, or
+provider-specific tests.
+
+FastAPI's `ThreatService` analyzes security events already stored in Neo4j
+through Member 4's bundled local model and deterministic investigation-
+priority scorer. This is not an external indicator reputation lookup. The
+backend contract and error states are documented in
+[backend_api.md](backend_api.md).
+
+The committed `data/graph_fixture` has 17 synthetic events and 18 synthetic
+entities. Its IP entities contain synthetic/private or documentation-range
+addresses; its only vulnerability value is
+`CVE-2024-0001-SIMULATED`. The event records do not contain domains, hashes,
+or populated network-flow attributes. These placeholders do not justify an
+external lookup, so no provider is recommended until real, authorized
+indicator data and a Member 5 contract are available. Live Neo4j contents
+were not queried.
+
 ## Official source links
 
 - [CIC dataset catalog](https://www.unb.ca/cic/datasets/index.html)

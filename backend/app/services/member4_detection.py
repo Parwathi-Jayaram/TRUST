@@ -45,7 +45,11 @@ class Member4DetectionEngine:
     def _predict_events(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
         self._load()
         try:
-            predictions = self._predict_batch(self._bundle, events)
+            model_events = [
+                self._prepare_event_for_model(event)
+                for event in events
+            ]
+            predictions = self._predict_batch(self._bundle, model_events)
             if len(predictions) != len(events):
                 raise DetectionInferenceError(
                     "Member 4 returned a different number of predictions than input events."
@@ -102,6 +106,30 @@ class Member4DetectionEngine:
             self._predict_batch = predict_module.predict_batch
             self._compute_priority = scoring_module.compute_investigation_priority
             self._recommendation = scoring_module.priority_to_recommendation
+
+    @staticmethod
+    def _prepare_event_for_model(event: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(event, dict):
+            raise TypeError("Member 4 event input must be an object.")
+        event_id = event.get("event_id")
+        if not isinstance(event_id, str) or not event_id.strip():
+            raise ValueError("Member 4 event requires a nonempty event_id.")
+
+        model_event = dict(event)
+        attributes = model_event.get("attributes")
+        if attributes is None:
+            return model_event
+        if not isinstance(attributes, dict):
+            raise TypeError("Member 4 event attributes must be an object.")
+
+        for name, value in attributes.items():
+            if not isinstance(name, str) or not name.strip():
+                raise TypeError("Member 4 event attribute names must be nonempty strings.")
+            if isinstance(value, (dict, list, tuple)):
+                raise TypeError("Member 4 event attribute values must be scalar.")
+            feature_name = name if name.startswith("attr_") else f"attr_{name}"
+            model_event.setdefault(feature_name, value)
+        return model_event
 
     def _score_prediction(
         self,

@@ -3,7 +3,13 @@ import unittest
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
+from backend.app.database.neo4j_connection import Neo4jConnectionError
 from backend.app.main import create_app
+from backend.app.services.member4_detection import (
+    DetectionEngineUnavailable,
+    DetectionInferenceError,
+    Member4DetectionEngine,
+)
 
 
 class StubDetectionEngine:
@@ -33,6 +39,14 @@ class StubDetectionEngine:
         return predictions
 
 
+class FailingDetectionEngine:
+    def __init__(self, error):
+        self.error = error
+
+    async def predict_events(self, events):
+        raise self.error
+
+
 class ThreatDatabase:
     def __init__(self):
         self.calls = []
@@ -42,6 +56,15 @@ class ThreatDatabase:
                 "event_type": "network_connection",
                 "event_time": "2026-11-20T10:00:00Z",
                 "severity": "high",
+                "evidence_id": "EVD-001",
+                "evidence_status": "observed",
+                "attributes": {
+                    "Protocol": 6,
+                    "SrcPort": 53000,
+                    "DstPort": 443,
+                    "SrcBytes": 2048,
+                    "DstBytes": 8192,
+                },
                 "source_entity_id": "HOST-001",
                 "is_synthetic": True,
             },
@@ -50,6 +73,8 @@ class ThreatDatabase:
                 "event_type": "authentication",
                 "event_time": "2026-11-20T11:00:00Z",
                 "severity": "low",
+                "evidence_id": "EVD-002",
+                "evidence_status": "observed",
                 "source_entity_id": "HOST-002",
                 "is_synthetic": True,
             },
@@ -112,6 +137,9 @@ class ThreatRouteTests(unittest.TestCase):
         self.assertEqual(threat["risk_score"], 82.5)
         self.assertEqual(threat["model_confidence_percent"], 91)
         self.assertNotEqual(threat["risk_score"], threat["model_confidence_percent"])
+        self.assertEqual(threat["evidence_id"], "EVD-001")
+        self.assertEqual(threat["evidence_status"], "model_generated_signal")
+        self.assertEqual(threat["source_evidence_status"], "observed")
         self.assertTrue(threat["is_synthetic"])
 
     def test_high_risk_list_filters_using_investigation_priority(self) -> None:
@@ -137,3 +165,89 @@ class ThreatRouteTests(unittest.TestCase):
         response = self.client.get("/api/threats/EVT-002")
 
         self.assertEqual(response.status_code, 404)
+
+    def test_missing_event_returns_not_found(self) -> None:
+        response = self.client.get("/api/threats/EVT-MISSING")
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_empty_event_page_returns_empty_success(self) -> None:
+        self.database.events = {}
+
+        response = self.client.get("/api/threats")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["threats"], [])
+
+    def test_invalid_pagination_is_rejected(self) -> None:
+        response = self.client.get("/api/threats?skip=-1")
+
+        self.assertEqual(response.status_code, 422)
+
+    def test_malformed_stored_event_returns_gateway_error(self) -> None:
+        self.database.events = {
+            "EVT-MALFORMED": {"event_type": "network_connection"},
+        }
+
+        response = self.client.get("/api/threats")
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("event_id", response.json()["message"])
+
+    def test_malformed_stored_attributes_return_gateway_error(self) -> None:
+        self.database.events = {
+            "EVT-MALFORMED": {
+                "event_id": "EVT-MALFORMED",
+                "attributes": ["not", "an", "object"],
+            },
+        }
+
+        response = self.client.get("/api/threats")
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn("malformed attributes", response.json()["message"])
+
+    def test_model_failures_return_explicit_service_errors(self) -> None:
+        cases = (
+            (DetectionEngineUnavailable("model unavailable"), 503),
+            (DetectionInferenceError("inference failed"), 502),
+        )
+        for error, expected_status in cases:
+            with self.subTest(error=type(error).__name__):
+                app = create_app(
+                    make_settings(),
+                    self.database,
+                    FailingDetectionEngine(error),
+                )
+                with TestClient(app) as client:
+                    response = client.get("/api/threats")
+                self.assertEqual(response.status_code, expected_status)
+
+    def test_neo4j_query_failure_returns_service_unavailable(self) -> None:
+        class FailingDatabase(ThreatDatabase):
+            async def execute_read(self, query, parameters=None):
+                raise Neo4jConnectionError("Database query failed.")
+
+        app = create_app(
+            make_settings(),
+            FailingDatabase(),
+            StubDetectionEngine(),
+        )
+        with TestClient(app) as client:
+            response = client.get("/api/threats")
+
+        self.assertEqual(response.status_code, 503)
+
+    def test_bundled_model_is_callable_through_fastapi_service(self) -> None:
+        engine = Member4DetectionEngine()
+        app = create_app(make_settings(), self.database, engine)
+
+        with TestClient(app) as client:
+            response = client.get("/api/threats")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["data"]["source"],
+            "member4_on_demand_inference",
+        )
+        self.assertIsNotNone(engine._bundle)

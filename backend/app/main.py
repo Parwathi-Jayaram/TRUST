@@ -33,6 +33,7 @@ from .services.member4_detection import (
     DetectionInferenceError,
     Member4DetectionEngine,
 )
+from .services.threat_service import ThreatEventDataError
 
 
 def create_app(
@@ -130,6 +131,16 @@ def create_app(
     async def handle_detection_failure(
         request: Request,
         exc: DetectionInferenceError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=502,
+            content={"success": False, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(ThreatEventDataError)
+    async def handle_threat_event_data_error(
+        request: Request,
+        exc: ThreatEventDataError,
     ) -> JSONResponse:
         return JSONResponse(
             status_code=502,
