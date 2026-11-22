@@ -10,7 +10,9 @@ RETURN
         THEN entity END) AS servers,
     count(CASE WHEN toLower(coalesce(entity.type, '')) = 'incident'
           AND toUpper(coalesce(entity.status, '')) IN $active_incident_statuses
-        THEN entity END) AS active_incidents
+        THEN entity END) AS active_incidents,
+    count(CASE WHEN toLower(coalesce(entity.type, '')) = 'investigation'
+        THEN entity END) AS current_investigation_count
 """
 
 DASHBOARD_RECENT_EVENTS = """
@@ -274,6 +276,35 @@ RETURN properties(evidence) AS evidence
 ORDER BY evidence.evidence_id
 """
 
+REPORT_SNAPSHOT_EVIDENCE = """
+MATCH (evidence:GraphNode:Evidence)
+WHERE evidence.evidence_id IN $evidence_ids
+RETURN properties(evidence) AS evidence
+ORDER BY evidence.evidence_id
+LIMIT $limit
+"""
+
+REPORT_SNAPSHOT_CREATE = """
+MATCH (investigation:GraphNode:Entity {id: $investigation_id})
+WHERE toLower(coalesce(investigation.type, '')) = 'investigation'
+CREATE (snapshot:ReportSnapshot {
+    id: $report_id,
+    investigation_id: $investigation_id,
+    payload_json: $payload_json,
+    schema_version: $schema_version,
+    snapshot_captured_at: $snapshot_captured_at
+})
+RETURN properties(snapshot) AS report_snapshot
+"""
+
+REPORT_SNAPSHOT_GET = """
+MATCH (snapshot:ReportSnapshot {
+    id: $report_id,
+    investigation_id: $investigation_id
+})
+RETURN properties(snapshot) AS report_snapshot
+"""
+
 INVESTIGATION_STATUS = """
 MATCH (investigation:GraphNode:Entity {id: $investigation_id})
 WHERE toLower(coalesce(investigation.type, '')) = 'investigation'
@@ -298,7 +329,8 @@ RETURN
     investigation.id AS investigation_id,
     investigation.title AS title,
     investigation.status AS status,
-    investigation.updated_at AS updated_at
+    investigation.updated_at AS updated_at,
+    investigation.is_synthetic AS is_synthetic
 ORDER BY investigation.updated_at DESC, investigation.id
 LIMIT $limit
 """

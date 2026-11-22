@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, HTTPException, Path, Query, Request, status
 
 from ..schemas.investigation_schema import (
     AddInvestigationEvidenceRequest,
@@ -8,6 +8,7 @@ from ..schemas.investigation_schema import (
     UpdateInvestigationStatusRequest,
 )
 from ..services.investigation_service import InvestigationService
+from ..services.report_data_service import ReportDataService
 from ..utils.response import success
 
 router = APIRouter(prefix="/api/investigations", tags=["investigations"])
@@ -16,6 +17,14 @@ router = APIRouter(prefix="/api/investigations", tags=["investigations"])
 def investigation_service(request: Request) -> InvestigationService:
     return InvestigationService(
         request.app.state.neo4j,
+        request.app.state.settings.max_graph_depth,
+    )
+
+
+def report_data_service(request: Request) -> ReportDataService:
+    return ReportDataService(
+        request.app.state.neo4j,
+        request.app.state.detection_engine,
         request.app.state.settings.max_graph_depth,
     )
 
@@ -106,6 +115,34 @@ async def get_investigation_timeline(
 ) -> dict:
     timeline = await investigation_service(request).get_timeline(investigation_id)
     return success({"investigation_id": investigation_id, "timeline": timeline})
+
+
+@router.post(
+    "/{investigation_id}/report-snapshots",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_investigation_report_snapshot(
+    request: Request,
+    investigation_id: str = Path(..., min_length=1, max_length=200),
+) -> dict:
+    snapshot = await report_data_service(request).create_snapshot(investigation_id)
+    return success(
+        snapshot.model_dump(mode="json"),
+        "Investigation report snapshot created",
+    )
+
+
+@router.get("/{investigation_id}/report-snapshots/{report_id}")
+async def get_investigation_report_snapshot(
+    request: Request,
+    investigation_id: str = Path(..., min_length=1, max_length=200),
+    report_id: str = Path(..., min_length=1, max_length=200),
+) -> dict:
+    snapshot = await report_data_service(request).get_snapshot(
+        investigation_id,
+        report_id,
+    )
+    return success(snapshot.model_dump(mode="json"))
 
 
 @router.get("/{investigation_id}/attack-paths")

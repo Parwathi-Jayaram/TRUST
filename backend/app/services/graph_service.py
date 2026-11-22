@@ -159,6 +159,8 @@ class GraphService:
             "relationships": list(relationships.values()),
             "depth": depth,
             "path_limit": limit,
+            "returned_paths": len(rows),
+            "may_be_truncated": len(rows) == limit,
         })
     
     async def find_attack_paths(

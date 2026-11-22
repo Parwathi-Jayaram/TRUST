@@ -1,4 +1,5 @@
 import { AlertCircle, LoaderCircle } from 'lucide-react'
+import { provenanceLabel } from '../utils/integrationData'
 
 export function LoadingState({ label = 'Loading operational data...' }) {
   return (
@@ -31,6 +32,17 @@ export function SeverityBadge({ severity }) {
     info: 'bg-slate-500/15 text-slate-300 ring-slate-500/30',
   }
   return <span className={`badge ${styles[value] || styles.info}`}>{value}</span>
+}
+
+export function ProvenanceBadge({ isSynthetic }) {
+  const label = provenanceLabel(isSynthetic)
+  const style = isSynthetic === true
+    ? 'bg-amber-500/15 text-amber-200 ring-amber-500/30'
+    : isSynthetic === false
+      ? 'bg-slate-500/15 text-slate-300 ring-slate-500/30'
+      : 'bg-slate-700/50 text-slate-400 ring-slate-600/40'
+
+  return <span className={`badge ${style}`} title="Based on source metadata">{label}</span>
 }
 
 export function StatCard({ label, value, icon: Icon, tone = 'cyan', detail }) {

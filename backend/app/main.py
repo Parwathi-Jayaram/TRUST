@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from .config import Settings, get_settings
 from .database.neo4j_connection import Neo4jConnection, Neo4jConnectionError
+from .database.demo_connection import SyntheticFixtureConnection
 from .routes.dashboard import router as dashboard_router
 from .routes.blast_radius import router as blast_radius_router
 from .routes.containment import router as containment_router
@@ -23,6 +24,11 @@ from .services.investigation_service import (
     InvestigationConflict,
     InvestigationNotFound,
     InvestigationReferenceNotFound,
+)
+from .services.report_data_service import (
+    ReportSnapshotDataError,
+    ReportSnapshotNotFound,
+    ReportSnapshotTooLarge,
 )
 from .services.containment_service import (
     ContainmentTargetNotFound,
@@ -44,7 +50,20 @@ def create_app(
     app_settings = settings or get_settings()
     if app_settings.app_env == "production" and not app_settings.api_bearer_token:
         raise RuntimeError("API_BEARER_TOKEN must be configured in production.")
-    database = neo4j_connection or Neo4jConnection(app_settings)
+    if neo4j_connection is not None:
+        database = neo4j_connection
+    elif (
+        app_settings.demo_fallback
+        and app_settings.app_env != "production"
+        and not any((
+            app_settings.neo4j_uri,
+            app_settings.neo4j_username,
+            app_settings.neo4j_password,
+        ))
+    ):
+        database = SyntheticFixtureConnection(app_settings)
+    else:
+        database = Neo4jConnection(app_settings)
     member4_engine = detection_engine or Member4DetectionEngine()
 
     @asynccontextmanager
@@ -214,6 +233,36 @@ def create_app(
     ) -> JSONResponse:
         return JSONResponse(
             status_code=409,
+            content={"success": False, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(ReportSnapshotNotFound)
+    async def handle_report_snapshot_not_found(
+        request: Request,
+        exc: ReportSnapshotNotFound,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"success": False, "message": "Report snapshot not found.", "data": None},
+        )
+
+    @app.exception_handler(ReportSnapshotTooLarge)
+    async def handle_report_snapshot_too_large(
+        request: Request,
+        exc: ReportSnapshotTooLarge,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=413,
+            content={"success": False, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(ReportSnapshotDataError)
+    async def handle_report_snapshot_data_error(
+        request: Request,
+        exc: ReportSnapshotDataError,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=502,
             content={"success": False, "message": str(exc), "data": None},
         )
 

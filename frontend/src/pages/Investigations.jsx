@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
-import { ClipboardList, Plus } from 'lucide-react'
-import { ErrorState, LoadingState, SeverityBadge } from '../components/Common'
+import { FileText, LoaderCircle } from 'lucide-react'
+import { ErrorState, LoadingState, ProvenanceBadge, SeverityBadge } from '../components/Common'
 import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
 
@@ -14,16 +14,24 @@ export default function Investigations() {
   const [attackPathError, setAttackPathError] = useState(null)
   const [attackPathLoading, setAttackPathLoading] = useState(false)
   const attackPathRequestId = useRef(0)
+  const [reportSnapshot, setReportSnapshot] = useState(null)
+  const [reportSnapshotError, setReportSnapshotError] = useState(null)
+  const [reportSnapshotLoading, setReportSnapshotLoading] = useState(false)
+  const reportSnapshotRequestId = useRef(0)
   const selected = useApi(() => selectedId ? api.investigation(selectedId) : Promise.resolve(null), [selectedId])
 
   function selectInvestigation(id) {
     attackPathRequestId.current += 1
+    reportSnapshotRequestId.current += 1
     setSelectedId(id)
     setPathSourceId('')
     setPathTargetId('')
     setAttackPaths(null)
     setAttackPathError(null)
     setAttackPathLoading(false)
+    setReportSnapshot(null)
+    setReportSnapshotError(null)
+    setReportSnapshotLoading(false)
   }
 
   async function addNote() {
@@ -53,6 +61,52 @@ export default function Investigations() {
     }
   }
 
+  async function captureReportSnapshot() {
+    if (!selectedId) return
+    const requestId = ++reportSnapshotRequestId.current
+    setReportSnapshotLoading(true)
+    setReportSnapshotError(null)
+    setReportSnapshot(null)
+    try {
+      const result = await api.createInvestigationReportSnapshot(selectedId)
+      if (reportSnapshotRequestId.current === requestId) {
+        setReportSnapshot(result)
+      }
+    } catch (error) {
+      if (reportSnapshotRequestId.current === requestId) {
+        setReportSnapshotError(error)
+      }
+    } finally {
+      if (reportSnapshotRequestId.current === requestId) {
+        setReportSnapshotLoading(false)
+      }
+    }
+  }
+
+  async function reloadReportSnapshot() {
+    if (!selectedId || !reportSnapshot?.report_id) return
+    const requestId = ++reportSnapshotRequestId.current
+    setReportSnapshotLoading(true)
+    setReportSnapshotError(null)
+    try {
+      const result = await api.investigationReportSnapshot(
+        selectedId,
+        reportSnapshot.report_id,
+      )
+      if (reportSnapshotRequestId.current === requestId) {
+        setReportSnapshot(result)
+      }
+    } catch (error) {
+      if (reportSnapshotRequestId.current === requestId) {
+        setReportSnapshotError(error)
+      }
+    } finally {
+      if (reportSnapshotRequestId.current === requestId) {
+        setReportSnapshotLoading(false)
+      }
+    }
+  }
+
   if (investigations.loading) return <LoadingState />
   if (investigations.error) return <ErrorState error={investigations.error} />
   const items = investigations.data?.items || []
@@ -66,14 +120,18 @@ export default function Investigations() {
         <div className="panel overflow-hidden">
           {items.length ? items.map((item) => (
             <button key={item.id} onClick={() => selectInvestigation(item.id)} className={`w-full border-b border-slate-800 px-4 py-4 text-left hover:bg-slate-800/40 ${selectedId === item.id ? 'bg-cyan-400/[0.04]' : ''}`}>
-              <div className="font-medium">{item.title || item.id}</div><div className="mt-1 text-xs text-slate-500">{item.status} • {item.updated_at || '—'}</div>
+              <div className="font-medium">{item.title || item.id}</div>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span>{item.status} • {item.updated_at || '—'}</span>
+                <ProvenanceBadge isSynthetic={item.is_synthetic} />
+              </div>
             </button>
           )) : <div className="py-16 text-center text-sm text-slate-500">No investigations found</div>}
         </div>
         <div className="panel p-5">
           {!selectedId ? <div className="grid h-64 place-items-center text-sm text-slate-500">Open an investigation to review evidence</div> : selected.loading ? <LoadingState /> : selected.error ? <ErrorState error={selected.error} /> : (
             <div>
-              <div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2><div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div></div><SeverityBadge severity={selected.data?.status} /></div>
+              <div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2><div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div><div className="mt-2"><ProvenanceBadge isSynthetic={selected.data?.is_synthetic} /></div></div><SeverityBadge severity={selected.data?.status} /></div>
               <div className="mt-5">
                 <h3 className="text-sm font-semibold">Findings</h3>
                 <p className="mt-2 rounded-lg bg-soc-950 p-3 text-sm leading-6 text-slate-300">{selected.data?.findings || 'No findings recorded.'}</p>
@@ -179,6 +237,133 @@ export default function Investigations() {
                       </div>
                     )}
                   </>
+                )}
+              </details>
+              <details className="mt-5 rounded-lg border border-slate-800 bg-soc-950 p-4">
+                <summary className="cursor-pointer text-sm font-semibold">Report data snapshot</summary>
+                <p className="mt-2 text-xs leading-5 text-slate-400">
+                  Capture and review a backend snapshot of this investigation.
+                  It preserves the captured data and does not generate an AI explanation.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    className="primary-button inline-flex items-center gap-2"
+                    disabled={reportSnapshotLoading}
+                    onClick={captureReportSnapshot}
+                    type="button"
+                  >
+                    {reportSnapshotLoading
+                      ? <LoaderCircle className="animate-spin" size={16} />
+                      : <FileText size={16} />}
+                    {reportSnapshotLoading ? 'Capturing snapshot...' : 'Capture report snapshot'}
+                  </button>
+                  {reportSnapshot?.report_id && (
+                    <button
+                      className="secondary-button"
+                      disabled={reportSnapshotLoading}
+                      onClick={reloadReportSnapshot}
+                      type="button"
+                    >
+                      Reload stored snapshot
+                    </button>
+                  )}
+                </div>
+                {reportSnapshotError && (
+                  <p className="mt-3 text-sm text-red-300" role="alert">
+                    {reportSnapshotError.message}
+                  </p>
+                )}
+                {reportSnapshot && (
+                  <div className="mt-4 space-y-4" aria-live="polite">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-200">
+                          Snapshot {reportSnapshot.report_id}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Captured {reportSnapshot.snapshot_captured_at}
+                        </div>
+                      </div>
+                      <ProvenanceBadge isSynthetic={reportSnapshot.provenance?.is_synthetic} />
+                    </div>
+                    {reportSnapshot.partial && (
+                      <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.05] p-3 text-sm text-amber-200">
+                        Partial report: one or more data sources are unavailable or not implemented.
+                      </p>
+                    )}
+                    <p className="rounded-lg bg-slate-900 p-3 text-sm leading-6 text-slate-300">
+                      {reportSnapshot.executive_summary?.text || 'No summary is available.'}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="rounded-lg border border-slate-800 p-3">
+                        <div className="text-xs text-slate-500">Risk assessment</div>
+                        <div className="mt-1 text-sm text-slate-200">
+                          {reportSnapshot.risk_assessment?.score == null
+                            ? reportSnapshot.risk_assessment?.status || 'Unavailable'
+                            : `${reportSnapshot.risk_assessment.score} (${reportSnapshot.risk_assessment.level})`}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Member 4 investigation-priority score
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-slate-800 p-3">
+                        <div className="text-xs text-slate-500">Graph sections</div>
+                        <div className="mt-1 text-sm text-slate-200">
+                          {reportSnapshot.graph?.subgraphs?.length || 0}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {reportSnapshot.graph?.status || 'Unavailable'}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-slate-800 p-3">
+                        <div className="text-xs text-slate-500">Evidence records</div>
+                        <div className="mt-1 text-sm text-slate-200">
+                          {reportSnapshot.evidence?.length || 0}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {reportSnapshot.findings?.length || 0} event assessments
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-slate-800 p-3">
+                        <div className="text-xs text-slate-500">Unavailable features</div>
+                        <div className="mt-1 text-sm text-slate-200">
+                          Threat intelligence: {reportSnapshot.threat_intelligence?.status || 'unknown'}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          AI explanation: {reportSnapshot.ai_explanation?.status || 'unknown'}
+                        </div>
+                      </div>
+                    </div>
+                    {(reportSnapshot.findings || []).map((finding) => (
+                      <div key={finding.finding_id} className="rounded-lg border border-slate-800 p-3">
+                        <div className="text-sm font-semibold text-slate-200">
+                          Event {finding.event_id} · {finding.event_type || 'unknown type'}
+                        </div>
+                        <div className="mt-2 grid gap-2 text-xs text-slate-400 sm:grid-cols-3">
+                          <span>Source evidence: {finding.source_evidence_status || 'unknown'}</span>
+                          <span>Model signal: {finding.model_generated_signal || 'unavailable'}</span>
+                          <span>Prediction: {finding.prediction || 'unavailable'}</span>
+                        </div>
+                        {!!finding.evidence_ids?.length && (
+                          <div className="mt-2 text-xs text-slate-500">
+                            Evidence: {finding.evidence_ids.join(', ')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {!!reportSnapshot.limitations?.length && (
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Limitations
+                        </h4>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-400">
+                          {reportSnapshot.limitations.map((limitation, index) => (
+                            <li key={`${index}-${limitation}`}>{limitation}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
                 )}
               </details>
               <div className="mt-5">

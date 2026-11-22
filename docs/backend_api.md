@@ -73,7 +73,7 @@ bearer token.
 | Incidents | `GET /api/incidents`, `GET /{incident_id}`, `POST /api/incidents`, `PATCH /{incident_id}/status`, `PATCH /{incident_id}/priority`, `GET /{incident_id}/timeline` |
 | Blast radius | `GET /api/blast-radius/{entity_id}`, `POST /api/blast-radius/analyze` |
 | Containment | `POST /api/containment/simulate`, `/compare`, `GET /api/containment/recommendations/{incident_id}` |
-| Investigations | `POST /api/investigations`, `GET /api/investigations`, `GET /{investigation_id}`, `POST /{investigation_id}/notes`, `POST /{investigation_id}/evidence`, `GET /{investigation_id}/evidence`, `PATCH /{investigation_id}/status`, `GET /{investigation_id}/timeline`, `GET /{investigation_id}/attack-paths?source_id=...&target_id=...&depth=3&limit=20` |
+| Investigations | `POST /api/investigations`, `GET /api/investigations`, `GET /{investigation_id}`, `POST /{investigation_id}/notes`, `POST /{investigation_id}/evidence`, `GET /{investigation_id}/evidence`, `PATCH /{investigation_id}/status`, `GET /{investigation_id}/timeline`, `POST /{investigation_id}/report-snapshots`, `GET /{investigation_id}/report-snapshots/{report_id}`, `GET /{investigation_id}/attack-paths?source_id=...&target_id=...&depth=3&limit=20` |
 
 The investigation attack-path endpoint runs the existing bounded graph query
 on demand; both endpoints must be linked to the investigation. It does not
@@ -141,6 +141,42 @@ synthetic IP entity values and one simulated CVE-like entity, but no domains,
 hashes, or populated network-flow `attributes`. No external provider is
 recommended from those placeholder indicators, and no live Neo4j contents
 were queried.
+
+## Investigation report snapshots
+
+`POST /api/investigations/{investigation_id}/report-snapshots` calls
+`ReportDataService.create_snapshot()` and returns a validated
+`InvestigationReportSnapshot`. The authenticated route captures persisted
+investigation metadata, linked evidence, bounded graph subgraphs, and the
+existing Member 4 assessment for a linked alert event. Member 4 failures leave
+the graph/evidence in place and produce an unavailable risk status with a
+null score.
+The Investigation Workspace exposes capture and reload actions and displays
+the snapshot summary, risk status, graph/evidence counts, event provenance,
+and limitations.
+
+The snapshot contains `source_evidence_status` from the stored event,
+`model_generated_signal` as model provenance, and Member 4's `prediction` as
+separate fields. The risk score, when present, is Member 4's existing
+investigation-priority score; it is not confidence or a probability of
+compromise. External threat intelligence and AI explanations are marked
+`not_implemented`, so current snapshots are explicitly partial.
+
+Snapshots are stored as serialized payloads on `ReportSnapshot` nodes that
+are not labeled `GraphNode`; they do not become graph evidence. The API has no
+update/delete operation. `GET
+/api/investigations/{investigation_id}/report-snapshots/{report_id}` returns
+the captured payload without re-running analysis. Graph collection is bounded
+to 20 entities, depth 2, and 10 paths per entity; evidence to 100 records;
+descriptive strings to 4,000 characters; and the serialized payload to 1 MB.
+Omitted or truncated data is recorded in limitations and sets `partial`.
+Malformed stored payloads return 502, missing snapshots 404, Neo4j failures
+503, and over-limit snapshots 413.
+In synthetic development mode, the adapter stores snapshots in memory only.
+The source service reads are separate Neo4j transactions, so the persisted
+payload is stable after capture but is not guaranteed to represent one
+transactionally consistent point-in-time database view. No snapshot retention
+or deletion policy is configured.
 
 Graph list endpoints are paginated. Graph traversal depth is bounded by
 `MAX_GRAPH_DEPTH` (default 4, maximum 6); subgraph and blast-radius queries also

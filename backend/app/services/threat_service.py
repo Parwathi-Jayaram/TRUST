@@ -71,19 +71,24 @@ class ThreatService:
         }
 
     async def get_threat(self, threat_id: str) -> dict[str, Any] | None:
+        threat = await self.analyze_event(threat_id)
+        if threat is None or not is_suspicious_prediction(
+            threat.get("prediction")
+        ):
+            return None
+        return threat
+
+    async def analyze_event(self, event_id: str) -> dict[str, Any] | None:
         rows = await self.database.execute_read(
             queries.THREAT_EVENT,
-            parameters={"threat_id": threat_id},
+            parameters={"threat_id": event_id},
         )
         if not rows or rows[0].get("event") is None:
             return None
 
         event = self._validated_event(rows[0]["event"])
         predictions = await self.detection_engine.predict_events([event])
-        prediction = predictions[0]
-        if not is_suspicious_prediction(prediction.get("prediction")):
-            return None
-        return self._format_threat(event, prediction)
+        return self._format_threat(event, predictions[0])
 
     async def get_associated_entities(
         self,
@@ -146,6 +151,6 @@ class ThreatService:
             "investigation_priority": prediction.get("investigation_priority"),
             "evidence_status": prediction.get("evidence_status"),
             "source_evidence_status": event.get("evidence_status"),
-            "is_synthetic": event.get("is_synthetic", False),
+            "is_synthetic": event.get("is_synthetic"),
             "limitations": prediction.get("limitations", []),
         }

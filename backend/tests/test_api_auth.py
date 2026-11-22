@@ -4,6 +4,7 @@ from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
+from backend.app.database.neo4j_connection import Neo4jConnectionError
 from backend.app.main import create_app
 
 
@@ -15,6 +16,7 @@ class AuthDatabase:
             "users": 0,
             "servers": 0,
             "active_incidents": 0,
+            "current_investigation_count": 0,
         }]
 
     async def health(self):
@@ -52,6 +54,12 @@ class ApiBearerAuthTests(unittest.TestCase):
 
     def test_api_routes_reject_missing_or_invalid_token(self):
         self.assertEqual(self.client.get("/api/dashboard/overview").status_code, 401)
+        self.assertEqual(
+            self.client.post(
+                "/api/investigations/INV-001/report-snapshots"
+            ).status_code,
+            401,
+        )
         self.assertEqual(
             self.client.get(
                 "/api/dashboard/overview",
@@ -100,3 +108,16 @@ class ApiBearerAuthTests(unittest.TestCase):
         app = create_app(make_settings(app_env="production"), AuthDatabase())
         self.assertIsNone(app.docs_url)
         self.assertIsNone(app.openapi_url)
+
+    def test_partial_neo4j_credentials_do_not_select_synthetic_fallback(self):
+        settings = replace(
+            make_settings(),
+            neo4j_uri="neo4j+s://example.invalid",
+            demo_fallback=True,
+        )
+
+        with self.assertRaisesRegex(
+            Neo4jConnectionError,
+            "configuration is incomplete",
+        ):
+            create_app(settings)

@@ -6,11 +6,17 @@ import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
 
 export default function BlastRadius() {
-  const [entityId, setEntityId] = useState('HOST-001')
+  const [entityId, setEntityId] = useState('')
   const [depth, setDepth] = useState(3)
+  const entityList = useApi(() => api.graphEntities({ limit: 200 }))
   const result = useApi(() => api.blastRadius(entityId, depth), [entityId, depth])
+  const entityOptions = entityList.data?.items || []
   const [nodes, setNodes] = useNodesState([])
   const [edges, setEdges] = useEdgesState([])
+
+  useEffect(() => {
+    if (!entityId && entityOptions.length) setEntityId(String(entityOptions[0].id))
+  }, [entityOptions, entityId])
 
   useEffect(() => {
     const data = result.data || {}
@@ -33,8 +39,12 @@ export default function BlastRadius() {
     })))
   }, [result.data, setNodes, setEdges])
 
+  if (entityList.loading) return <LoadingState label="Loading graph entities..." />
+  if (entityList.error) return <ErrorState error={entityList.error} onRetry={entityList.reload} />
+  if (!entityOptions.length) return <div className="panel p-6 text-sm text-slate-400">No graph entities are available.</div>
+  if (!entityId) return <LoadingState label="Selecting graph entity..." />
   if (result.loading) return <LoadingState label="Calculating graph blast radius..." />
-  if (result.error) return <ErrorState error={result.error} />
+  if (result.error) return <ErrorState error={result.error} onRetry={result.reload} />
 
   const data = result.data || {}
   const affected = data.affected_entities || data.entities || []
@@ -43,7 +53,14 @@ export default function BlastRadius() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div><h1 className="text-xl font-semibold">Blast Radius Analysis</h1><p className="mt-1 text-sm text-slate-500">Potential exposure from a source entity</p></div>
         <div className="flex gap-2">
-          <div className="relative"><Crosshair size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" /><input className="field w-44 pl-9" value={entityId} onChange={(e) => setEntityId(e.target.value)} /></div>
+          <div className="relative">
+            <Crosshair size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <select className="field w-56 pl-9" value={entityId} onChange={(event) => setEntityId(event.target.value)}>
+              {entityOptions.map((entity) => (
+                <option key={entity.id} value={entity.id}>{entity.name || entity.id} · {entity.id}</option>
+              ))}
+            </select>
+          </div>
           <select className="field w-28" value={depth} onChange={(e) => setDepth(Number(e.target.value))}><option value={1}>1 hop</option><option value={2}>2 hops</option><option value={3}>3 hops</option></select>
         </div>
       </div>

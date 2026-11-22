@@ -12,6 +12,10 @@ async def health(request: Request) -> JSONResponse:
         "status": "healthy" if status == "healthy" else "degraded",
         "database_status": status,
     }
+    if "mode" in database_health:
+        response["mode"] = database_health["mode"]
+    if database_health.get("synthetic") is True:
+        response["synthetic"] = True
     return JSONResponse(
         content=response,
         status_code=200 if status == "healthy" else 503,

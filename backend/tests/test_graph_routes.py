@@ -45,11 +45,7 @@ class GraphDatabase:
             return [{
                 "source_labels": ["GraphNode", "Entity"],
                 "source_properties": {"id": "HOST-001", "type": "Host"},
-                "nodes": [{
-                    "id": "HOST-001",
-                    "labels": ["GraphNode", "Entity"],
-                    "properties": {"id": "HOST-001", "type": "Host"},
-                }],
+                "nodes": [],
                 "relationships": [],
             }]
         if "OPTIONAL MATCH (entity)-[relationship]-(neighbor" in query:
@@ -179,4 +175,5 @@ class GraphRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()["data"]
         self.assertEqual(data["root"]["properties"]["id"], "HOST-001")
-        self.assertEqual(data["nodes"], [{"id": "HOST-001", "labels": ["GraphNode", "Entity"], "properties": {"id": "HOST-001", "type": "Host"}}])
+        self.assertEqual(data["nodes"], [])
+        self.assertEqual(data["relationships"], [])
