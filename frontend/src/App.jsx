@@ -54,7 +54,10 @@ export default function App() {
               <Route path="/blast-radius" element={<BlastRadius />} />
               <Route path="/containment" element={<Containment />} />
               <Route path="/incidents" element={<Incidents />} />
-              <Route path="/investigations" element={<Investigations />} />
+              <Route
+                path="/investigations"
+                element={<Investigations canGenerateReports={Boolean(apiToken)} />}
+              />
               <Route path="/settings" element={<Settings />} />
             </Routes>
           </main>

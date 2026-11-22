@@ -8,7 +8,7 @@ from ..config import Settings
 
 
 class SyntheticFixtureConnection:
-    """Read-only development connection backed by TRUSTRAIL's authorized JSONL fixture."""
+    """Development adapter for TRUSTRAIL's authorized synthetic JSONL fixture."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -20,6 +20,7 @@ class SyntheticFixtureConnection:
         self.evidence = self._load_jsonl(fixture_dir / "evidence.jsonl")
         self.investigations: dict[str, dict[str, Any]] = {}
         self.incidents: dict[str, dict[str, Any]] = {}
+        self.report_snapshots: dict[str, list[dict[str, Any]]] = {}
 
         for entity in self.entities:
             if str(entity.get("type", "")).lower() == "incident":
@@ -307,7 +308,13 @@ class SyntheticFixtureConnection:
                     item for item in self.evidence
                     if item["evidence_id"] in evidence_ids
                 ]
-                return [{"evidence_id": item["evidence_id"], "evidence": item} for item in evidence]
+                return [
+                    {
+                        "evidence_id": item["evidence_id"],
+                        "evidence": {**item, "is_synthetic": True},
+                    }
+                    for item in evidence
+                ]
             if "OBSERVED_ON" in query:
                 event = next((item for item in self.events if item["event_id"] == threat_id), None)
                 if event is None:
@@ -322,7 +329,7 @@ class SyntheticFixtureConnection:
                     for item in entities
                 ]
             event = next((item for item in self.events if item["event_id"] == threat_id), None)
-            return [{"event": event}] if event else []
+            return [{"event": {**event, "is_synthetic": True}}] if event else []
 
         if "INCIDENT_LIST" in query or (
             "incident:GraphNode:Entity" in query
@@ -369,9 +376,9 @@ class SyntheticFixtureConnection:
             entity = next((item for item in self.entities if item["id"] == entity_id), None)
             return [{"id": entity["id"], "type": entity["type"], "properties": entity}] if entity else []
 
-        if "INVESTIGATION_LIST" in query or (
-            "investigation:GraphNode:Entity" in query
-            and "properties(investigation) AS investigation" in query
+        if (
+            "SKIP $skip" in query
+            and "MATCH (investigation:GraphNode:Entity)" in query
         ):
             status = parameters.get("status")
             alert_id = parameters.get("alert_id")
@@ -385,6 +392,16 @@ class SyntheticFixtureConnection:
             limit = int(parameters.get("limit", 50))
             return [{"investigation": dict(item)} for item in investigations[start:start + limit]]
 
+        if "RETURN report.snapshot_json AS snapshot_json" in query:
+            investigation_id = parameters.get("investigation_id")
+            if investigation_id not in self.investigations:
+                return []
+            snapshots = self.report_snapshots.get(investigation_id, [])
+            if not snapshots:
+                return []
+            latest = max(snapshots, key=lambda item: item["generated_at"])
+            return [{"snapshot_json": latest["snapshot_json"]}]
+
         if "investigation_id" in parameters:
             investigation_id = parameters["investigation_id"]
             investigation = self.investigations.get(investigation_id)
@@ -395,7 +412,12 @@ class SyntheticFixtureConnection:
                     return []
                 evidence_ids = investigation.get("evidence_ids", [])
                 evidence = [item for item in self.evidence if item["evidence_id"] in evidence_ids]
-                return [{"evidence": item} for item in evidence]
+                if "LIMIT $limit" in query:
+                    evidence = evidence[:int(parameters.get("limit", 101))]
+                return [
+                    {"evidence": {**item, "is_synthetic": True}}
+                    for item in evidence
+                ]
             if investigation is None:
                 return []
             return [{"investigation": dict(investigation)}]
@@ -570,6 +592,30 @@ class SyntheticFixtureConnection:
         parameters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         parameters = parameters or {}
+
+        if "CREATE (report:GraphNode:InvestigationReport)" in query:
+            investigation = self.investigations.get(parameters["investigation_id"])
+            if investigation is None:
+                return []
+            self.report_snapshots.setdefault(parameters["investigation_id"], []).append({
+                "report_id": parameters["report_id"],
+                "generated_at": parameters["generated_at"],
+                "snapshot_json": parameters["snapshot_json"],
+                "snapshot_sha256": parameters["snapshot_sha256"],
+                "is_synthetic": parameters["is_synthetic"],
+            })
+            investigation.setdefault("audit_history", []).append(parameters["audit_entry"])
+            return [{"report_id": parameters["report_id"]}]
+
+        if (
+            "SET investigation.audit_history =" in query
+            and "RETURN investigation.id AS investigation_id" in query
+        ):
+            investigation = self.investigations.get(parameters["investigation_id"])
+            if investigation is None:
+                return []
+            investigation.setdefault("audit_history", []).append(parameters["audit_entry"])
+            return [{"investigation_id": parameters["investigation_id"]}]
 
         if "CREATE (incident:GraphNode:Entity)" in query:
             properties = dict(parameters["properties"])

@@ -18,6 +18,7 @@ from .routes.graph import router as graph_router
 from .routes.health import router as health_router
 from .routes.incidents import router as incidents_router
 from .routes.investigations import router as investigations_router
+from .routes.investigation_reports import router as investigation_reports_router
 from .routes.threats import router as threats_router
 from .services.incident_service import IncidentConflict, IncidentNotFound
 from .services.investigation_service import (
@@ -83,6 +84,7 @@ def create_app(
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH"],
         allow_headers=["Content-Type", "Authorization"],
+        expose_headers=["X-Report-Status"],
     )
 
     @app.middleware("http")
@@ -118,6 +120,7 @@ def create_app(
     app.include_router(containment_router)
     app.include_router(incidents_router)
     app.include_router(investigations_router)
+    app.include_router(investigation_reports_router)
     app.include_router(threats_router)
 
     @app.exception_handler(Neo4jConnectionError)
