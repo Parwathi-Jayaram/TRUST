@@ -20,15 +20,19 @@ from .member4_detection import (
 )
 from .threat_service import ThreatService
 
-class ReportSnapshotNotFound(LookupError):
+class ReportSnapshotNotFound(LookupError, ReportSnapshotError):
     pass
 
 
-class ReportSnapshotTooLarge(ValueError):
+class ReportSnapshotError(Exception):
     pass
 
 
-class ReportSnapshotDataError(RuntimeError):
+class ReportSnapshotTooLarge(ValueError, ReportSnapshotError):
+    pass
+
+
+class ReportSnapshotDataError(RuntimeError, ReportSnapshotError):
     pass
 
 

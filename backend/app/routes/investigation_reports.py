@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Path, Request, Response
 
 from ..services.investigation_service import InvestigationNotFound
 from ..services.report_data_service import (
-    InvestigationReportDataService,
+    ReportDataService,
     ReportSnapshotError,
 )
 from ..services.report_pdf_service import (
@@ -150,7 +150,7 @@ async def generate_investigation_report(
                     headers={"Retry-After": "2"},
                 )
             try:
-                data_service = InvestigationReportDataService(
+                data_service = ReportDataService(
                     request.app.state.neo4j,
                     request.app.state.detection_engine,
                     request.app.state.settings.max_graph_depth,
