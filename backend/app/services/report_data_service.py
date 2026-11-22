@@ -36,6 +36,15 @@ class ReportSnapshotDataError(RuntimeError, ReportSnapshotError):
     pass
 
 
+def safe_report_text(value: Any, limit: int = 4_000) -> str | None:
+    if value is None:
+        return None
+    text = str(value)
+    if len(text) > limit:
+        text = text[: limit - 11] + "...[truncated]"
+    return text if text else None
+
+
 class ReportDataService:
     MAX_EVIDENCE = 100
     MAX_GRAPH_ENTITIES = 20
