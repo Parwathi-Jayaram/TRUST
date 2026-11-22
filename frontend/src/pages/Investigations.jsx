@@ -4,8 +4,14 @@ import { ErrorState, LoadingState, ProvenanceBadge, SeverityBadge } from '../com
 import { useApi } from '../hooks/useApi'
 import { api } from '../services/api'
 
-export default function Investigations() {
+export default function Investigations({ canGenerateReports = false }) {
   const investigations = useApi(api.investigations)
+  const [createOpen, setCreateOpen] = useState(false)
+  const [title, setTitle] = useState('')
+  const [alertId, setAlertId] = useState('')
+  const [entityIds, setEntityIds] = useState([])
+  const [createError, setCreateError] = useState(null)
+  const [creating, setCreating] = useState(false)
   const [selectedId, setSelectedId] = useState(null)
   const [note, setNote] = useState('')
   const [pathSourceId, setPathSourceId] = useState('')
@@ -19,11 +25,62 @@ export default function Investigations() {
   const [reportSnapshotLoading, setReportSnapshotLoading] = useState(false)
   const reportSnapshotRequestId = useRef(0)
   const selected = useApi(() => selectedId ? api.investigation(selectedId) : Promise.resolve(null), [selectedId])
+  const evidence = useApi(
+    () => selectedId ? api.investigationEvidence(selectedId) : Promise.resolve([]),
+    [selectedId],
+  )
+  const timeline = useApi(
+    () => selectedId ? api.investigationTimeline(selectedId) : Promise.resolve([]),
+    [selectedId],
+  )
+
+  useEffect(() => () => {
+    if (reportUrl.current) URL.revokeObjectURL(reportUrl.current)
+  }, [])
+
+  async function createInvestigation(event) {
+    event.preventDefault()
+    if (creating) return
+    if (!title.trim()) {
+      setCreateError(new Error('Enter an investigation title.'))
+      return
+    }
+
+    setCreating(true)
+    setCreateError(null)
+    try {
+      const investigation = await api.createInvestigation({
+        title: title.trim(),
+        alert_id: alertId.trim() || null,
+        entity_ids: entityIds,
+      })
+      setTitle('')
+      setAlertId('')
+      setEntityIds([])
+      setCreateOpen(false)
+      selectInvestigation(investigation.id)
+      investigations.reload()
+    } catch (error) {
+      setCreateError(error)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  function toggleEntity(entityId) {
+    setEntityIds((current) => {
+      if (current.includes(entityId)) return current.filter((id) => id !== entityId)
+      if (current.length >= 50) return current
+      return [...current, entityId]
+    })
+  }
 
   function selectInvestigation(id) {
     attackPathRequestId.current += 1
     reportSnapshotRequestId.current += 1
     setSelectedId(id)
+    setReportStatus(null)
+    setReportError(null)
     setPathSourceId('')
     setPathTargetId('')
     setAttackPaths(null)
@@ -115,7 +172,84 @@ export default function Investigations() {
     : []
   return (
     <div className="space-y-5">
-      <div className="flex items-end justify-between"><div><h1 className="text-xl font-semibold">Investigation Workspace</h1><p className="mt-1 text-sm text-slate-500">Evidence, findings and analyst audit trail</p></div></div>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><h1 className="text-xl font-semibold">Investigation Workspace</h1><p className="mt-1 text-sm text-slate-500">Evidence, findings and analyst audit trail</p></div>
+        <button
+          className="primary-button"
+          onClick={() => {
+            setCreateError(null)
+            setCreateOpen((open) => !open)
+          }}
+          type="button"
+        >
+          <Plus size={15} />{createOpen ? 'Close form' : 'New investigation'}
+        </button>
+      </div>
+      {createOpen && (
+        <form className="panel space-y-4 p-5" onSubmit={createInvestigation}>
+          <div>
+            <h2 className="font-semibold">Create investigation</h2>
+            <p className="mt-1 text-xs text-slate-500">Link only entities and events returned by the backend. The backend validates all references.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="space-y-1 text-xs text-slate-400">
+              Investigation title
+              <input
+                className="field w-full"
+                maxLength={200}
+                onChange={(event) => setTitle(event.target.value)}
+                required
+                value={title}
+              />
+            </label>
+            <label className="space-y-1 text-xs text-slate-400">
+              Related event ID (optional)
+              <input
+                className="field w-full"
+                maxLength={200}
+                onChange={(event) => setAlertId(event.target.value)}
+                value={alertId}
+              />
+            </label>
+          </div>
+          <fieldset>
+            <legend className="text-xs font-semibold text-slate-400">Linked graph entities (up to 50)</legend>
+            {availableEntities.loading ? (
+              <p className="mt-2 text-xs text-slate-500">Loading available entities...</p>
+            ) : availableEntities.error ? (
+              <div className="mt-2"><ErrorState error={availableEntities.error} onRetry={availableEntities.reload} /></div>
+            ) : availableEntities.data?.items?.length ? (
+              <div className="mt-2 grid max-h-48 gap-2 overflow-auto rounded-lg border border-slate-800 p-3 sm:grid-cols-2 lg:grid-cols-3">
+                {availableEntities.data.items.map((entity) => {
+                  const checked = entityIds.includes(entity.id)
+                  return (
+                    <label key={entity.id} className="flex min-w-0 items-center gap-2 text-xs text-slate-300">
+                      <input
+                        checked={checked}
+                        disabled={!checked && entityIds.length >= 50}
+                        onChange={() => toggleEntity(entity.id)}
+                        type="checkbox"
+                      />
+                      <span className="truncate" title={`${entity.name || entity.id} · ${entity.id}`}>
+                        {entity.name || entity.id} · {entity.id}
+                      </span>
+                    </label>
+                  )
+                })}
+              </div>
+            ) : <p className="mt-2 text-xs text-slate-500">No graph entities are available to link.</p>}
+            <p className="mt-2 text-[10px] text-slate-500">{entityIds.length} of 50 entities selected. Empty selections are allowed by the current API.</p>
+          </fieldset>
+          {createError && <p className="text-sm text-red-300" role="alert">{createError.message}</p>}
+          <button
+            className="primary-button"
+            disabled={creating}
+            type="submit"
+          >
+            {creating ? 'Creating investigation...' : 'Create investigation'}
+          </button>
+        </form>
+      )}
       <div className="grid gap-4 xl:grid-cols-[300px_1fr]">
         <div className="panel overflow-hidden">
           {items.length ? items.map((item) => (
@@ -131,7 +265,36 @@ export default function Investigations() {
         <div className="panel p-5">
           {!selectedId ? <div className="grid h-64 place-items-center text-sm text-slate-500">Open an investigation to review evidence</div> : selected.loading ? <LoadingState /> : selected.error ? <ErrorState error={selected.error} /> : (
             <div>
-              <div className="flex items-start justify-between"><div><h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2><div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div><div className="mt-2"><ProvenanceBadge isSynthetic={selected.data?.is_synthetic} /></div></div><SeverityBadge severity={selected.data?.status} /></div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold">{selected.data?.title || selectedId}</h2>
+                  <div className="mt-1 text-xs text-slate-500">{selected.data?.id}</div>
+                  <div className="mt-2"><ProvenanceBadge isSynthetic={selected.data?.is_synthetic} /></div>
+                </div>
+                <div className="flex flex-col items-start gap-2 sm:items-end">
+                  <SeverityBadge severity={selected.data?.status} />
+                  {canGenerateReports && (
+                    <button
+                      className="secondary-button"
+                      disabled={reportLoading}
+                      onClick={downloadReport}
+                      type="button"
+                    >
+                      <Download size={15} />
+                      {reportLoading ? 'Generating report...' : 'Download report'}
+                    </button>
+                  )}
+                  {reportError && <p className="text-xs text-red-300" role="alert">{reportError.message}</p>}
+                  {reportStatus === 'partial' && (
+                    <p className="max-w-xs text-right text-xs text-amber-300" role="status">
+                      Partial report downloaded. Review its source-availability notes.
+                    </p>
+                  )}
+                  {reportStatus === 'complete' && (
+                    <p className="text-xs text-emerald-300" role="status">Report downloaded.</p>
+                  )}
+                </div>
+              </div>
               <div className="mt-5">
                 <h3 className="text-sm font-semibold">Findings</h3>
                 <p className="mt-2 rounded-lg bg-soc-950 p-3 text-sm leading-6 text-slate-300">{selected.data?.findings || 'No findings recorded.'}</p>
@@ -371,6 +534,48 @@ export default function Investigations() {
                 <div className="mt-2 space-y-2">
                   {(selected.data?.notes || []).map((entry, index) => <div key={entry.id || index} className="border-l-2 border-cyan-400/40 pl-3 text-sm text-slate-300"><div>{entry.note}</div><div className="mt-1 text-xs text-slate-500">{entry.created_at || ''}</div></div>)}
                 </div>
+              </div>
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold">Attached evidence</h3>
+                {evidence.loading ? <p className="mt-2 text-xs text-slate-500">Loading evidence...</p> : evidence.error ? (
+                  <p className="mt-2 text-xs text-red-300" role="alert">{evidence.error.message}</p>
+                ) : evidence.data?.length ? (
+                  <div className="mt-2 space-y-2">
+                    {evidence.data.map((item, index) => (
+                      <article key={item.evidence_id || index} className="rounded-lg border border-slate-800 bg-soc-950 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="font-medium text-slate-200">{item.evidence_id || 'Evidence ID unavailable'}</span>
+                          <ProvenanceBadge isSynthetic={item.is_synthetic} />
+                        </div>
+                        <p className="mt-2 break-words text-xs leading-5 text-slate-400">{item.description || 'No evidence description supplied.'}</p>
+                        <p className="mt-2 text-[10px] text-slate-500">
+                          {item.source_system || 'Source unavailable'} · {item.observed_at || 'Timestamp unavailable'}
+                        </p>
+                      </article>
+                    ))}
+                  </div>
+                ) : <p className="mt-2 text-xs text-slate-500">No evidence is attached to this investigation.</p>}
+              </div>
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold">Audit history</h3>
+                {timeline.loading ? <p className="mt-2 text-xs text-slate-500">Loading audit history...</p> : timeline.error ? (
+                  <p className="mt-2 text-xs text-red-300" role="alert">{timeline.error.message}</p>
+                ) : timeline.data?.length ? (
+                  <div className="mt-2 space-y-2">
+                    {timeline.data.slice(-20).reverse().map((entry, index) => (
+                      <div key={`${entry.timestamp || 'entry'}-${index}`} className="border-l-2 border-slate-700 pl-3 text-xs">
+                        <div className="text-slate-300">{entry.action || 'Activity recorded'}</div>
+                        <div className="mt-1 break-words text-slate-500">
+                          {entry.timestamp || 'Timestamp unavailable'} · {entry.actor || 'Actor unavailable'}
+                          {entry.note ? ` · ${entry.note}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                    {timeline.data.length > 20 && (
+                      <p className="text-[10px] text-slate-500">Showing the latest 20 of {timeline.data.length} audit entries.</p>
+                    )}
+                  </div>
+                ) : <p className="mt-2 text-xs text-slate-500">No audit entries are available.</p>}
               </div>
               <div className="mt-5 flex gap-2"><input className="field flex-1" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add an investigation note..." /><button className="primary-button" onClick={addNote}>Add note</button></div>
             </div>

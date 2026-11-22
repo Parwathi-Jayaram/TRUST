@@ -39,23 +39,15 @@ it. The frontend asks each user to enter that token and keeps it in
 `GET /healthz` liveness check is public for Render and returns only process
 status. `GET /api/health` separately checks Neo4j and may return 503 while the
 database is unavailable. API docs are disabled in production. CORS must be set
-to the deployed frontend's exact origin. Generate the token locally with
-`python -c "import secrets; print(secrets.token_urlsafe(32))"` and enter it
-directly in Render's environment settings.
+to the exact deployed frontend origin.
 
-For the separately hosted frontend, set these build-time variables:
-
-```text
-VITE_API_BASE_URL=https://<render-service>.onrender.com/api
-VITE_API_AUTH_REQUIRED=true
-```
-
-Render probes `/healthz`, which checks process liveness only; that check can
-succeed while Neo4j is unavailable. Before relying on database-backed APIs,
+The backend may start while Neo4j is unavailable. Before relying on database-backed APIs,
 confirm `GET /api/health` returns 200 using the deployment's database settings.
 If it returns 503, the service may have a public URL, but database-backed
 requests are not ready. Render and Neo4j must also be able to communicate over
 the configured network.
+
+Containment operations are simulation only.
 
 ## API groups
 

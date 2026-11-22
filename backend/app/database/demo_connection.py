@@ -8,7 +8,7 @@ from ..config import Settings
 
 
 class SyntheticFixtureConnection:
-    """Read-only development connection backed by TRUSTRAIL's authorized JSONL fixture."""
+    """Development adapter for TRUSTRAIL's authorized synthetic JSONL fixture."""
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -149,7 +149,7 @@ class SyntheticFixtureConnection:
                 "is_synthetic": True,
             } for event in events]
 
-        if "INVESTIGATION_RECENT_ACTIVITY" in query:
+        if "investigation.id AS investigation_id" in query:
             limit = int(parameters.get("limit", 20))
             investigations = sorted(
                 self.investigations.values(),
@@ -244,38 +244,15 @@ class SyntheticFixtureConnection:
                 "properties": self._entity_props(entity),
             }]
 
-        if "MATCH (entity:GraphNode)" in query and "OPTIONAL MATCH (entity)-[relationship]" in query:
-            if "CASE WHEN relationship IS NULL" in query:
-                entity_id = parameters.get("entity_id")
-                if not any(entity["id"] == entity_id for entity in self.entities):
-                    return []
-                rows = []
-                for relationship in self._original_relationships():
-                    if relationship["source_id"] != entity_id and relationship["target_id"] != entity_id:
-                        continue
-                    neighbor_id = (
-                        relationship["target_id"]
-                        if relationship["source_id"] == entity_id
-                        else relationship["source_id"]
-                    )
-                    neighbor = next(
-                        (item for item in self.entities if item["id"] == neighbor_id),
-                        None,
-                    )
-                    if neighbor is None:
-                        continue
-                    rows.append({
-                        "properties": relationship,
-                        "type": relationship["relationship_type"],
-                        "source_id": relationship["source_id"],
-                        "target_id": relationship["target_id"],
-                        "neighbor_labels": ["GraphNode", "Entity"],
-                        "neighbor_properties": self._entity_props(neighbor),
-                    })
-                return rows
+        if "OPTIONAL MATCH (entity)-[relationship]-(neighbor:GraphNode)" in query:
             entity_id = parameters.get("entity_id")
-            if not any(entity["id"] == entity_id for entity in self.entities):
+            entity = next(
+                (item for item in self.entities if item["id"] == entity_id),
+                None,
+            )
+            if entity is None:
                 return []
+            is_neighbor_query = "entity_labels" in query
             rows = []
             for relationship in self._original_relationships():
                 if relationship["source_id"] == entity_id or relationship["target_id"] == entity_id:
@@ -290,18 +267,47 @@ class SyntheticFixtureConnection:
                     )
                     if neighbor is None:
                         continue
-                    source_entity = next(item for item in self.entities if item["id"] == entity_id)
-                    rows.append({
-                        "entity_labels": ["GraphNode", "Entity"],
-                        "entity_properties": self._entity_props(source_entity),
+                    neighbor_data = {
                         "neighbor_labels": ["GraphNode", "Entity"],
                         "neighbor_properties": self._entity_props(neighbor),
-                        "relationship_type": relationship["relationship_type"],
-                        "relationship_properties": relationship,
                         "source_id": relationship["source_id"],
                         "target_id": relationship["target_id"],
-                    })
-            return rows
+                    }
+                    if is_neighbor_query:
+                        rows.append({
+                            **neighbor_data,
+                            "entity_labels": ["GraphNode", "Entity"],
+                            "entity_properties": self._entity_props(entity),
+                            "relationship_type": relationship["relationship_type"],
+                            "relationship_properties": relationship,
+                        })
+                    else:
+                        rows.append({
+                            **neighbor_data,
+                            "type": relationship["relationship_type"],
+                            "properties": relationship,
+                        })
+            if rows:
+                return rows
+            if is_neighbor_query:
+                return [{
+                    "entity_labels": ["GraphNode", "Entity"],
+                    "entity_properties": self._entity_props(entity),
+                    "neighbor_labels": None,
+                    "neighbor_properties": None,
+                    "relationship_type": None,
+                    "relationship_properties": None,
+                    "source_id": None,
+                    "target_id": None,
+                }]
+            return [{
+                "type": None,
+                "properties": None,
+                "neighbor_labels": None,
+                "neighbor_properties": None,
+                "source_id": None,
+                "target_id": None,
+            }]
 
         if "properties(event) AS event" in query:
             skip = int(parameters.get("skip", 0))
@@ -325,7 +331,13 @@ class SyntheticFixtureConnection:
                     item for item in self.evidence
                     if item["evidence_id"] in evidence_ids
                 ]
-                return [{"evidence_id": item["evidence_id"], "evidence": item} for item in evidence]
+                return [
+                    {
+                        "evidence_id": item["evidence_id"],
+                        "evidence": {**item, "is_synthetic": True},
+                    }
+                    for item in evidence
+                ]
             if "OBSERVED_ON" in query:
                 event = next((item for item in self.events if item["event_id"] == threat_id), None)
                 if event is None:
@@ -340,7 +352,7 @@ class SyntheticFixtureConnection:
                     for item in entities
                 ]
             event = next((item for item in self.events if item["event_id"] == threat_id), None)
-            return [{"event": event}] if event else []
+            return [{"event": {**event, "is_synthetic": True}}] if event else []
 
         if "INCIDENT_LIST" in query or (
             "incident:GraphNode:Entity" in query
@@ -364,7 +376,7 @@ class SyntheticFixtureConnection:
             incident = self.incidents.get(incident_id)
             if "RETURN incident.status AS status" in query:
                 return [{"status": incident["status"]}] if incident else []
-            if "INCIDENT_SOURCE_EVENT" in query:
+            if "OPTIONAL MATCH (event:GraphNode:SecurityEvent {event_id: incident.related_event_id})" in query:
                 if incident is None:
                     return []
                 event_id = incident.get("related_event_id")
@@ -387,9 +399,9 @@ class SyntheticFixtureConnection:
             entity = next((item for item in self.entities if item["id"] == entity_id), None)
             return [{"id": entity["id"], "type": entity["type"], "properties": entity}] if entity else []
 
-        if "INVESTIGATION_LIST" in query or (
-            "investigation:GraphNode:Entity" in query
-            and "properties(investigation) AS investigation" in query
+        if (
+            "SKIP $skip" in query
+            and "MATCH (investigation:GraphNode:Entity)" in query
         ):
             status = parameters.get("status")
             alert_id = parameters.get("alert_id")
@@ -403,17 +415,32 @@ class SyntheticFixtureConnection:
             limit = int(parameters.get("limit", 50))
             return [{"investigation": dict(item)} for item in investigations[start:start + limit]]
 
+        if "RETURN report.snapshot_json AS snapshot_json" in query:
+            investigation_id = parameters.get("investigation_id")
+            if investigation_id not in self.investigations:
+                return []
+            snapshots = self.report_snapshots.get(investigation_id, [])
+            if not snapshots:
+                return []
+            latest = max(snapshots, key=lambda item: item["generated_at"])
+            return [{"snapshot_json": latest["snapshot_json"]}]
+
         if "investigation_id" in parameters:
             investigation_id = parameters["investigation_id"]
             investigation = self.investigations.get(investigation_id)
             if "RETURN investigation.status AS status" in query:
                 return [{"status": investigation["status"]}] if investigation else []
-            if "INVESTIGATION_EVIDENCE" in query:
+            if "UNWIND coalesce(investigation.evidence_ids" in query:
                 if investigation is None:
                     return []
                 evidence_ids = investigation.get("evidence_ids", [])
                 evidence = [item for item in self.evidence if item["evidence_id"] in evidence_ids]
-                return [{"evidence": item} for item in evidence]
+                if "LIMIT $limit" in query:
+                    evidence = evidence[:int(parameters.get("limit", 101))]
+                return [
+                    {"evidence": {**item, "is_synthetic": True}}
+                    for item in evidence
+                ]
             if investigation is None:
                 return []
             return [{"investigation": dict(investigation)}]
@@ -620,7 +647,7 @@ class SyntheticFixtureConnection:
             })
             return [{"incident": dict(properties)}]
 
-        if "INCIDENT_UPDATE_STATUS" in query:
+        if "SET incident.status = $new_status" in query:
             incident = self.incidents.get(parameters["incident_id"])
             if incident is None or str(incident.get("status", "UNSET")) != str(parameters["expected_status"]):
                 return []
@@ -629,7 +656,7 @@ class SyntheticFixtureConnection:
             incident.setdefault("status_history", []).append(parameters["audit_entry"])
             return [{"incident": dict(incident)}]
 
-        if "INCIDENT_UPDATE_PRIORITY" in query:
+        if "SET incident.priority = $priority" in query:
             incident = self.incidents.get(parameters["incident_id"])
             if incident is None:
                 return []
@@ -656,7 +683,7 @@ class SyntheticFixtureConnection:
             self.investigations[investigation_id] = properties
             return [{"investigation": dict(properties)}]
 
-        if "INVESTIGATION_ADD_NOTE" in query:
+        if "SET investigation.notes = coalesce(investigation.notes, []) + [$note_entry]" in query:
             investigation = self.investigations.get(parameters["investigation_id"])
             if investigation is None:
                 return []
@@ -665,7 +692,7 @@ class SyntheticFixtureConnection:
             investigation["updated_at"] = parameters["updated_at"]
             return [{"investigation": dict(investigation)}]
 
-        if "INVESTIGATION_ADD_EVIDENCE" in query:
+        if "SET investigation.evidence_ids =" in query:
             investigation = self.investigations.get(parameters["investigation_id"])
             if investigation is None:
                 return []
@@ -681,7 +708,7 @@ class SyntheticFixtureConnection:
                 investigation["updated_at"] = parameters["updated_at"]
             return [{"investigation": dict(investigation), "already_attached": False}]
 
-        if "INVESTIGATION_UPDATE_STATUS" in query:
+        if "SET investigation.status = $new_status" in query:
             investigation = self.investigations.get(parameters["investigation_id"])
             if investigation is None or investigation["status"] != parameters["expected_status"]:
                 return []

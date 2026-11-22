@@ -207,11 +207,25 @@ class InvestigationService:
             raise InvestigationReferenceNotFound(f"Evidence {evidence_id} not found.")
         return self._format_investigation(rows[0]["investigation"], include_history=True)
 
-    async def get_evidence(self, investigation_id: str) -> list[dict[str, Any]]:
+    async def get_evidence(
+        self,
+        investigation_id: str,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         await self.get_investigation(investigation_id)
+        if limit is not None and not 1 <= limit <= 101:
+            raise ValueError("Evidence limit must be between 1 and 101.")
+        query = (
+            queries.INVESTIGATION_EVIDENCE_LIMITED
+            if limit is not None
+            else queries.INVESTIGATION_EVIDENCE
+        )
+        parameters: dict[str, str | int] = {"investigation_id": investigation_id}
+        if limit is not None:
+            parameters["limit"] = limit
         rows = await self.database.execute_read(
-            queries.INVESTIGATION_EVIDENCE,
-            parameters={"investigation_id": investigation_id},
+            query,
+            parameters=parameters,
         )
         return [
             serialize_neo4j_value(row["evidence"])

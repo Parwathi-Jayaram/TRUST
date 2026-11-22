@@ -281,7 +281,6 @@ MATCH (evidence:GraphNode:Evidence)
 WHERE evidence.evidence_id IN $evidence_ids
 RETURN properties(evidence) AS evidence
 ORDER BY evidence.evidence_id
-LIMIT $limit
 """
 
 REPORT_SNAPSHOT_CREATE = """
@@ -333,6 +332,41 @@ RETURN
     investigation.is_synthetic AS is_synthetic
 ORDER BY investigation.updated_at DESC, investigation.id
 LIMIT $limit
+"""
+
+INVESTIGATION_REPORT_LATEST_SNAPSHOT = """
+MATCH (investigation:GraphNode:Entity {id: $investigation_id})
+WHERE toLower(coalesce(investigation.type, '')) = 'investigation'
+OPTIONAL MATCH (investigation)-[:HAS_REPORT]->(report:GraphNode:InvestigationReport)
+WITH report
+WHERE report.snapshot_json IS NOT NULL
+RETURN report.snapshot_json AS snapshot_json
+ORDER BY report.generated_at DESC, report.id DESC
+LIMIT 1
+"""
+
+INVESTIGATION_REPORT_STORE_SNAPSHOT = """
+MATCH (investigation:GraphNode:Entity {id: $investigation_id})
+WHERE toLower(coalesce(investigation.type, '')) = 'investigation'
+CREATE (report:GraphNode:InvestigationReport)
+SET report.id = $report_id,
+    report.investigation_id = $investigation_id,
+    report.generated_at = $generated_at,
+    report.snapshot_json = $snapshot_json,
+    report.snapshot_sha256 = $snapshot_sha256,
+    report.is_synthetic = $is_synthetic
+CREATE (investigation)-[:HAS_REPORT]->(report)
+SET investigation.audit_history =
+        coalesce(investigation.audit_history, []) + [$audit_entry]
+RETURN report.id AS report_id
+"""
+
+INVESTIGATION_REPORT_AUDIT = """
+MATCH (investigation:GraphNode:Entity {id: $investigation_id})
+WHERE toLower(coalesce(investigation.type, '')) = 'investigation'
+SET investigation.audit_history =
+        coalesce(investigation.audit_history, []) + [$audit_entry]
+RETURN investigation.id AS investigation_id
 """
 
 

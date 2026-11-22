@@ -20,7 +20,6 @@ from .member4_detection import (
 )
 from .threat_service import ThreatService
 
-
 class ReportSnapshotNotFound(LookupError):
     pass
 

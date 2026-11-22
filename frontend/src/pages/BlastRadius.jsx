@@ -9,7 +9,10 @@ export default function BlastRadius() {
   const [entityId, setEntityId] = useState('')
   const [depth, setDepth] = useState(3)
   const entityList = useApi(() => api.graphEntities({ limit: 200 }))
-  const result = useApi(() => api.blastRadius(entityId, depth), [entityId, depth])
+  const result = useApi(
+    () => entityId ? api.blastRadius(entityId, depth) : Promise.resolve(null),
+    [entityId, depth],
+  )
   const entityOptions = entityList.data?.items || []
   const [nodes, setNodes] = useNodesState([])
   const [edges, setEdges] = useEdgesState([])

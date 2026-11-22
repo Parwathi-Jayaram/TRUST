@@ -21,7 +21,7 @@ export function clearApiToken() {
   sessionStorage.removeItem(TOKEN_STORAGE_KEY)
 }
 
-async function request(path, options = {}) {
+async function requestResponse(path, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers,
@@ -55,6 +55,11 @@ async function request(path, options = {}) {
     } catch {}
     throw new Error(detail)
   }
+  return response
+}
+
+async function request(path, options = {}) {
+  const response = await requestResponse(path, options)
   const body = await response.json()
   const isEnvelope = body?.success === true && 'data' in body
   apiMode = isEnvelope ? 'neo4j' : 'fixture'
@@ -237,6 +242,14 @@ export const api = {
     return normalizeInvestigation(data)
   },
   investigation: async (id) => normalizeInvestigation(await request('/investigations/' + encodeURIComponent(id))),
+  investigationEvidence: async (id) => {
+    const data = await request('/investigations/' + encodeURIComponent(id) + '/evidence')
+    return data.evidence || []
+  },
+  investigationTimeline: async (id) => {
+    const data = await request('/investigations/' + encodeURIComponent(id) + '/timeline')
+    return data.timeline || []
+  },
   investigationAttackPaths: async (id, sourceId, targetId) => {
     const query = new URLSearchParams({
       source_id: sourceId,
